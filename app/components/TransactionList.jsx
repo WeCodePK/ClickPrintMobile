@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 4,
 	},
 	dateText: {
-		fontSize: 28,
+		fontSize: 16,
 		fontWeight: "700",
 		color: colors.textPrimary,
 		letterSpacing: -0.5,

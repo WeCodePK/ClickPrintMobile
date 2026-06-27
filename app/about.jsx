@@ -18,10 +18,10 @@ const AboutPage = () => {
 
 			{/* Header */}
 			<View style={styles.header}>
-				<TouchableOpacity onPress={() => router.replace("/(tabs)/profile")} style={styles.backButton}>
+				<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>About ClickPrint</Text>
+				<Text style={styles.headerTitle}>About</Text>
 				<View style={styles.placeholder} />
 			</View>
 
@@ -84,21 +84,6 @@ const AboutPage = () => {
 							</Text>
 						</View>
 					</View>
-				</View>
-
-				
-				<View style={styles.infoSection}>
-					<View style={styles.infoCard}>
-						
-						<View style={styles.infoRowLast}>
-							<Text style={styles.infoLabel}>Status</Text>
-							<Text style={styles.infoValue}>Production Ready</Text>
-						</View>
-					</View>
-				</View>
-
-				<View style={styles.footer}>
-					<Text style={styles.footerText}>Made by ClickPrint Team</Text>
 				</View>
 			</ScrollView>
 		</SafeAreaView>

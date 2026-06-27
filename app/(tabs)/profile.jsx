@@ -3,26 +3,40 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useNavigation } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { useEffect, useState } from "react";
-import { Alert, Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import avatar from "../../assets/profileAvatar.jpg";
 import { colors } from "../../constants/colors";
 
 // ----------------------------------- COMPONENTS -----------------------------------//
 
+const AnimatedMenuItem = ({ style, onPress, children }) => {
+	const scale = useRef(new Animated.Value(1)).current;
+
+	const handlePressIn = () => {
+		Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
+	};
+
+	const handlePressOut = () => {
+		Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 4 }).start();
+	};
+
+	return (
+		<TouchableOpacity onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} activeOpacity={1}>
+			<Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+		</TouchableOpacity>
+	);
+};
+
 const Profile = () => {
 	const [userName, setUserName] = useState("Loading...");
-	const [avatarUri, setAvatarUri] = useState(null);
 	const router = useRouter();
 	const navigation = useNavigation();
 
 	const loadProfileData = async () => {
 		try {
 			const name = (await SecureStore.getItemAsync("name")) ?? "John Doe";
-			const cachedAvatar = await SecureStore.getItemAsync("avatarUri");
 			setUserName(name);
-			setAvatarUri(cachedAvatar);
 		} catch (error) {
 			console.error("Error loading profile data:", error);
 		}
@@ -87,38 +101,29 @@ const Profile = () => {
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-				{/* Profile Header */}
-				<View style={styles.profileHeader}>
-					<Image 
-						source={avatarUri ? { uri: avatarUri } : avatar} 
-						style={styles.avatarContainer} 
-					/>
-					<Text style={styles.userName}>{userName}</Text>
-				</View>
-
+				<View style={styles.sectionsContainer}>
 				{/* Profile Sections */}
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Account</Text>
 
-					<TouchableOpacity
- 						style={styles.menuItem}
- 						onPress={() => {
-							router.push("/edit-profile");
- 						}}
- 					>
- 						<View style={styles.menuItemLeft}>
- 							<Feather name="user" size={20} color={colors.textPrimary} />
- 							<Text style={styles.menuItemText}>Edit Profile</Text>
- 						</View>
- 						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
- 					</TouchableOpacity>
+					{/* Profile Header */}
+					<AnimatedMenuItem
+						style={styles.menuItem}
+						onPress={() => router.push("/edit-profile")}
+					>
+						<View style={styles.menuItemLeft}>
+							<Feather name="user" size={20} color={colors.textPrimary} />
+							<Text style={styles.userName} numberOfLines={1}>{userName}</Text>
+						</View>
+						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
+					</AnimatedMenuItem>
 
 				</View>
 
 				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Preferences</Text>
+					<Text style={styles.sectionTitle}>Settings</Text>
 
-					<TouchableOpacity
+					<AnimatedMenuItem
 						style={styles.menuItem}
 						onPress={() => {
 							Alert.alert("Funtionality to be added soon!");
@@ -129,26 +134,13 @@ const Profile = () => {
 							<Text style={styles.menuItemText}>Notifications</Text>
 						</View>
 						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</TouchableOpacity>
-
-					<TouchableOpacity
-						style={styles.menuItem}
-						onPress={() => {
-							Alert.alert("Funtionality to be added soon!");
-						}}
-					>
-						<View style={styles.menuItemLeft}>
-							<Feather name="settings" size={20} color={colors.textPrimary} />
-							<Text style={styles.menuItemText}>Settings</Text>
-						</View>
-						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</TouchableOpacity>
+					</AnimatedMenuItem>
 				</View>
 
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Help</Text>
 
-					<TouchableOpacity
+					<AnimatedMenuItem
 						style={styles.menuItem}
 						onPress={() => {
 							router.push("/about");
@@ -159,9 +151,9 @@ const Profile = () => {
 							<Text style={styles.menuItemText}>About</Text>
 						</View>
 						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</TouchableOpacity>
+					</AnimatedMenuItem>
 
-					<TouchableOpacity
+					<AnimatedMenuItem
 						style={styles.menuItem}
 						onPress={handleContactSupport}
 					>
@@ -170,7 +162,9 @@ const Profile = () => {
 							<Text style={styles.menuItemText}>Contact Support</Text>
 						</View>
 						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</TouchableOpacity>
+					</AnimatedMenuItem>
+				</View>
+
 				</View>
 
 				{/* Logout Button */}
@@ -194,30 +188,19 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	scrollContent: {
+		flexGrow: 1,
+		paddingTop: 20,
 		paddingBottom: 20,
+		justifyContent: "space-between",
 	},
-	profileHeader: {
-		alignItems: "center",
-		paddingVertical: 32,
-		backgroundColor: colors.cardBackground,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
-		marginBottom: 24,
+	sectionsContainer: {
+		flex: 0,
 	},
-	avatarContainer: {
-		width: 100,
-		height: 100,
-		borderRadius: 50,
-		backgroundColor: colors.primary,
-		justifyContent: "center",
-		alignItems: "center",
-		marginBottom: 16,
-	},
+
 	userName: {
-		fontSize: 20,
-		fontWeight: "700",
+		fontSize: 16,
+		fontWeight: "500",
 		color: colors.textPrimary,
-		marginBottom: 4,
 	},
 	section: {
 		marginBottom: 24,

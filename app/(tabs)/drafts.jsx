@@ -119,7 +119,7 @@ const HomePage = () => {
 
 				<View style={styles.transactionsContainer}>
 					<View style={styles.historyHeader}>
-						<Text style={styles.historyTitle}>Print History</Text>
+						<Text style={styles.historyTitle}>Recent Transactions</Text>
 						<TouchableOpacity onPress={() => router.push("/printHistory")}>
 							<Text style={styles.seeAllText}>See All</Text>
 						</TouchableOpacity>

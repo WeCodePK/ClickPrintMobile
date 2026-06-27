@@ -20,7 +20,7 @@ export default function Layout() {
 					borderTopWidth: 1,
 					borderTopColor: colors.borderLight,
 					paddingTop: 10,
-					paddingBottom: Math.max(insets.bottom, 10),
+					paddingBottom: Math.max(insets.bottom, 5),
 					height: 80 + Math.max(insets.bottom, 10),
 					shadowColor: colors.shadowMedium,
 					shadowOffset: { width: 0, height: -4 },
@@ -39,8 +39,6 @@ export default function Layout() {
 				},
 			}}
 		>
-			{/* Home Tab */}
-
 			<Tabs.Screen
 				name="home"
 				options={{
@@ -49,23 +47,27 @@ export default function Layout() {
 				}}
 			/>
 
-			{/* Print History Tab */}
+			<Tabs.Screen
+				name="drafts"
+				options={{
+					title: "Drafts",
+					tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "create" : "create-outline"} size={20} color={color} />,
+				}}
+			/>
 
 			<Tabs.Screen
 				name="printHistory"
 				options={{
-					title: "Print History",
+					title: " History",
 					tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "receipt" : "receipt-outline"} size={20} color={color} />,
 				}}
 			/>
 
-			{/* Profile Tab */}
-
 			<Tabs.Screen
 				name="profile"
 				options={{
-					title: "Profile",
-					tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "person" : "person-outline"} size={20} color={color} />,
+					title: "More",
+					tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "menu" : "menu-outline"} size={20} color={color} />,
 				}}
 			/>
 		</Tabs>
