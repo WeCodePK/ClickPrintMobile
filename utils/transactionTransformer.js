@@ -1,37 +1,20 @@
-// -------------------------- Transform single backend transaction --------------------------
-
-const transformTransaction = (backendTransaction) => {
-	const rawTimestamp = backendTransaction.timestamp?.$date || backendTransaction.timestamp;
-	const timestamp = new Date(rawTimestamp);
-
-	// Extract date in YYYY-MM-DD format
-	const date = timestamp.toLocaleDateString();
-
-	// Extract time in HH:MM AM/PM format
-	const time = timestamp.toLocaleTimeString("en-US", {
-		hour: "numeric",
-		minute: "2-digit",
-		hour12: true,
-	});
-
+const transformTransaction = (t) => {
+	const date = new Date(t.createdAt);
 	return {
-		id: backendTransaction._id,
-		name: backendTransaction.name,
-		amount: backendTransaction.amount,
-		date: date,
-		time: time,
-		timestamp: backendTransaction.timestamp, // Keep original for sorting
-		pages: backendTransaction.pages,
-		printSize: backendTransaction.printSize,
+		id: t._id,
+		status: t.status,
+		shopId: t.forShop,
+		timestamp: t.createdAt,
+		date: date.toISOString().split("T")[0],
+		time: date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+		fileCount: t.files?.length || 0,
+		files: t.files || [],
+		statusHistory: t.statusHistory || [],
 	};
 };
 
-// -------------------------- Transform array of backend transactions --------------------------
-
 const transformTransactions = (backendTransactions) => {
-	if (!Array.isArray(backendTransactions)) {
-		return [];
-	}
+	if (!Array.isArray(backendTransactions)) return [];
 	return backendTransactions.map(transformTransaction);
 };
 

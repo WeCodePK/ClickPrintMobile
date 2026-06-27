@@ -1,6 +1,7 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Modal, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -11,6 +12,7 @@ import TransactionList from "../components/TransactionList";
 //----------------------------------- COMPONENTS -----------------------------------//
 
 const PrintHistory = () => {
+	const router = useRouter();
 	const { transactions: backendTransactions, loading, error, refreshing, refresh } = useTransactions();
 
 	const [filterModalVisible, setFilterModalVisible] = useState(false);
@@ -43,13 +45,11 @@ const PrintHistory = () => {
 				case "date":
 					comparison = new Date(a.timestamp) - new Date(b.timestamp);
 					break;
-				case "price":
-					comparison = a.amount - b.amount;
+				case "status":
+					comparison = (a.status || "").localeCompare(b.status || "");
 					break;
-				case "printSize":
-					const sizeA = a.printSize || "";
-					const sizeB = b.printSize || "";
-					comparison = sizeA.localeCompare(sizeB);
+				case "fileCount":
+					comparison = a.fileCount - b.fileCount;
 					break;
 				default:
 					comparison = 0;
@@ -156,7 +156,10 @@ const PrintHistory = () => {
 						<Text style={styles.emptyText}>No transactions found</Text>
 					</View>
 				) : (
-					<TransactionList transactions={filteredAndSortedTransactions} />
+					<TransactionList
+							transactions={filteredAndSortedTransactions}
+							onTransactionPress={(t) => router.push({ pathname: "/transaction-details", params: { transaction: JSON.stringify(t) } })}
+						/>
 				)}
 			</ScrollView>
 
@@ -243,37 +246,37 @@ const PrintHistory = () => {
 						<TouchableOpacity
 							style={styles.sortOption}
 							onPress={() => {
-								if (sortBy === "price") {
+								if (sortBy === "status") {
 									setSortOrder(sortOrder === "desc" ? "asc" : "desc");
 								} else {
-									setSortBy("price");
-									setSortOrder("desc");
+									setSortBy("status");
+									setSortOrder("asc");
 								}
 							}}
 						>
 							<View style={styles.sortOptionLeft}>
-								<Feather name="dollar-sign" size={20} color={colors.textPrimary} />
-								<Text style={styles.sortOptionText}>Price</Text>
+								<Feather name="activity" size={20} color={colors.textPrimary} />
+								<Text style={styles.sortOptionText}>Status</Text>
 							</View>
-							{sortBy === "price" && <Feather name={sortOrder === "desc" ? "arrow-down" : "arrow-up"} size={20} color={colors.primary} />}
+							{sortBy === "status" && <Feather name={sortOrder === "desc" ? "arrow-down" : "arrow-up"} size={20} color={colors.primary} />}
 						</TouchableOpacity>
 
 						<TouchableOpacity
 							style={styles.sortOption}
 							onPress={() => {
-								if (sortBy === "printSize") {
+								if (sortBy === "fileCount") {
 									setSortOrder(sortOrder === "desc" ? "asc" : "desc");
 								} else {
-									setSortBy("printSize");
+									setSortBy("fileCount");
 									setSortOrder("desc");
 								}
 							}}
 						>
 							<View style={styles.sortOptionLeft}>
 								<Feather name="file" size={20} color={colors.textPrimary} />
-								<Text style={styles.sortOptionText}>Print Size</Text>
+								<Text style={styles.sortOptionText}>File Count</Text>
 							</View>
-							{sortBy === "printSize" && (
+							{sortBy === "fileCount" && (
 								<Feather name={sortOrder === "desc" ? "arrow-down" : "arrow-up"} size={20} color={colors.primary} />
 							)}
 						</TouchableOpacity>

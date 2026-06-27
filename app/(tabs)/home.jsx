@@ -129,7 +129,11 @@ const HomePage = () => {
 							<ActivityIndicator size="large" color={colors.primary} />
 						</View>
 					) : (
-						<TransactionList transactions={transactions} limit={3} />
+						<TransactionList
+							transactions={transactions}
+							limit={3}
+							onTransactionPress={(t) => router.push({ pathname: "/transaction-details", params: { transaction: JSON.stringify(t) } })}
+						/>
 					)}
 				</View>
 			</ScrollView>
