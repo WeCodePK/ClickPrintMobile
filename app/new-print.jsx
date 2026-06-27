@@ -42,7 +42,7 @@ const NewPrint = () => {
 			}
 
 			const data = await response.json();
-			setShops(data.data.shops);
+			setShops(data.data);
 		} catch (err) {
 			console.error("Error fetching shops:", err);
 			setError(err.message || "Failed to load shops. Please try again.");
