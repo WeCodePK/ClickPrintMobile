@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
@@ -21,6 +21,9 @@ const NewPrint = () => {
 	const [selectedShop, setSelectedShop] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
+	const [searchQuery, setSearchQuery] = useState("");
+
+	const filteredShops = shops.filter((shop) => shop.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
 	useEffect(() => {
 		fetchShops();
@@ -80,6 +83,19 @@ const NewPrint = () => {
 				<View style={styles.placeholder} />
 			</View>
 
+			<View style={styles.searchContainer}>
+				<Feather name="search" size={18} color={colors.textSecondary} style={styles.searchIcon} />
+				<TextInput
+					style={styles.searchInput}
+					placeholder="Search shops..."
+					placeholderTextColor={colors.textSecondary}
+					value={searchQuery}
+					onChangeText={setSearchQuery}
+					returnKeyType="search"
+					clearButtonMode="while-editing"
+				/>
+			</View>
+
 			{loading ? (
 				<View style={styles.loadingContainer}>
 					<ActivityIndicator size="large" color={colors.primary} />
@@ -104,16 +120,21 @@ const NewPrint = () => {
 			) : (
 				<>
 					<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-						{shops.map((shop) => {
-							return (
+						{filteredShops.length === 0 ? (
+							<View style={styles.emptyContainer}>
+								<Feather name="search" size={48} color={colors.textSecondary} />
+								<Text style={styles.emptyText}>No shops match "{searchQuery}"</Text>
+							</View>
+						) : (
+							filteredShops.map((shop) => (
 								<ShopCard
 									key={shop._id}
 									shop={shop}
 									isSelected={selectedShop && selectedShop === shop._id}
 									onSelect={() => handleShopSelect(shop)}
 								/>
-							);
-						})}
+							))
+						)}
 					</ScrollView>
 
 					<View style={styles.footer}>
@@ -142,14 +163,6 @@ const ShopCard = ({ shop, isSelected, onSelect }) => {
 			<View style={styles.shopInfo}>
 				<Text style={[styles.shopName, isSelected && styles.shopNameSelected]}>{shop.name}</Text>
 				<Text style={styles.shopAddress}>{shop.address}</Text>
-				<View style={styles.capabilities}>
-					{shop.capabilities.map((capability, index) => (
-						<View key={index} style={styles.capabilityItem}>
-							<Text style={styles.capabilityBullet}>•</Text>
-							<Text style={styles.capabilityText}>{capability}</Text>
-						</View>
-					))}
-				</View>
 			</View>
 			{isSelected && (
 				<View style={styles.selectionIndicator}>
@@ -190,6 +203,29 @@ const styles = StyleSheet.create({
 	},
 	placeholder: {
 		width: 40,
+	},
+	searchContainer: {
+		flexDirection: "row",
+		alignItems: "center",
+		backgroundColor: colors.cardBackground,
+		borderBottomWidth: 1,
+		borderBottomColor: colors.borderLight,
+		paddingHorizontal: 20,
+		paddingVertical: 10,
+	},
+	searchIcon: {
+		marginRight: 10,
+	},
+	searchInput: {
+		flex: 1,
+		fontSize: 15,
+		color: colors.textPrimary,
+		paddingVertical: 8,
+		paddingHorizontal: 12,
+		backgroundColor: colors.background,
+		borderRadius: 10,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
 	},
 	loadingContainer: {
 		flex: 1,
@@ -285,24 +321,6 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		marginBottom: 12,
 		lineHeight: 20,
-	},
-	capabilities: {
-		gap: 4,
-	},
-	capabilityItem: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		gap: 8,
-	},
-	capabilityBullet: {
-		fontSize: 14,
-		color: colors.textSecondary,
-		marginTop: 2,
-	},
-	capabilityText: {
-		fontSize: 13,
-		color: colors.textSecondary,
-		flex: 1,
 	},
 	selectionIndicator: {
 		marginLeft: 8,
