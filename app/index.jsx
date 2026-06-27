@@ -68,6 +68,7 @@ const Login = () => {
 		setLoading(true);
 		console.log("Requesting OTP for:", number);
 		try {
+
 			const response = await fetch(`${API_BASE_URL}/auth/otp`, {
 				method: "POST",
 				headers: {

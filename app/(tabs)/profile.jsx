@@ -1,33 +1,61 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
-import { Alert, Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import avatar from "../../assets/profileAvatar.jpg";
 import { colors } from "../../constants/colors";
 
 // ----------------------------------- COMPONENTS -----------------------------------//
 
-const fetchUserName = async () => {
-	const name = (await SecureStore.getItemAsync("name")) ?? "John Doe";
-	return name;
-};
-
 const Profile = () => {
 	const [userName, setUserName] = useState("Loading...");
+	const [avatarUri, setAvatarUri] = useState(null);
+	const router = useRouter();
+	const navigation = useNavigation();
 
-	useEffect(() => {
-		const loadName = async () => {
-			const name = await fetchUserName();
+	const loadProfileData = async () => {
+		try {
+			const name = (await SecureStore.getItemAsync("name")) ?? "John Doe";
+			const cachedAvatar = await SecureStore.getItemAsync("avatarUri");
 			setUserName(name);
-		};
-		loadName();
+			setAvatarUri(cachedAvatar);
+		} catch (error) {
+			console.error("Error loading profile data:", error);
+		}
+	};
+
+	// Initial load
+	useEffect(() => {
+		loadProfileData();
 	}, []);
 
-	const router = useRouter();
+	// Reload details when screen comes back into focus
+	useEffect(() => {
+		const unsubscribe = navigation.addListener("focus", () => {
+			loadProfileData();
+		});
+		return unsubscribe;
+	}, [navigation]);
+
+	
+
+    const handleContactSupport = async () => {
+		const email = "sohailkhankmu@gmail.com";
+		const url = `mailto:${email}? subject=ClickPrint%20Support`;
+		try{
+			await Linking.openURL(url);
+
+		}catch (error){
+			console.error("Error openning mail app:", error);
+			Alert.alert("Contact Support", "Could not open your email application automatically. Please email us at: " + email);
+		};
+
+	};
+
 	const handleLogout = () => {
 		Alert.alert("Logout", "Are you sure you want to logout?", [
 			{
@@ -41,6 +69,7 @@ const Profile = () => {
 						console.log("Logout pressed");
 						await SecureStore.deleteItemAsync("authToken");
 						await SecureStore.deleteItemAsync("name");
+						await SecureStore.deleteItemAsync("avatarUri");
 						router.replace("/");
 					} catch (error) {
 						console.error("Error during logout, maybe issue with deleting token:", error);
@@ -60,7 +89,10 @@ const Profile = () => {
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				{/* Profile Header */}
 				<View style={styles.profileHeader}>
-					<Image source={avatar} style={styles.avatarContainer} />
+					<Image 
+						source={avatarUri ? { uri: avatarUri } : avatar} 
+						style={styles.avatarContainer} 
+					/>
 					<Text style={styles.userName}>{userName}</Text>
 				</View>
 
@@ -69,17 +101,18 @@ const Profile = () => {
 					<Text style={styles.sectionTitle}>Account</Text>
 
 					<TouchableOpacity
-						style={styles.menuItem}
-						onPress={() => {
-							Alert.alert("Funtionality to be added soon!");
-						}}
-					>
-						<View style={styles.menuItemLeft}>
-							<Feather name="user" size={20} color={colors.textPrimary} />
-							<Text style={styles.menuItemText}>Edit Profile</Text>
-						</View>
-						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</TouchableOpacity>
+ 						style={styles.menuItem}
+ 						onPress={() => {
+							router.push("/edit-profile");
+ 						}}
+ 					>
+ 						<View style={styles.menuItemLeft}>
+ 							<Feather name="user" size={20} color={colors.textPrimary} />
+ 							<Text style={styles.menuItemText}>Edit Profile</Text>
+ 						</View>
+ 						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
+ 					</TouchableOpacity>
+
 				</View>
 
 				<View style={styles.section}>
@@ -118,7 +151,7 @@ const Profile = () => {
 					<TouchableOpacity
 						style={styles.menuItem}
 						onPress={() => {
-							Alert.alert("Funtionality to be added soon!");
+							router.push("/about");
 						}}
 					>
 						<View style={styles.menuItemLeft}>
@@ -130,9 +163,7 @@ const Profile = () => {
 
 					<TouchableOpacity
 						style={styles.menuItem}
-						onPress={() => {
-							Alert.alert("Funtionality to be added soon!");
-						}}
+						onPress={handleContactSupport}
 					>
 						<View style={styles.menuItemLeft}>
 							<Feather name="mail" size={20} color={colors.textPrimary} />
