@@ -35,7 +35,8 @@ const HomePage = () => {
 
 	const fetchBalance = async () => {
 		try {
-			const token = await SecureStore.getItemAsync("authToken");
+			 const token = await SecureStore.getItemAsync("authToken");
+			//const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI2YTQyNGUyODBhYWU1NTNlYTJmN2U5NmEiLCJzaWQiOiI2YTNjZGVkODcwNTY2OWE4ZjU5ODExMjUiLCJpYXQiOjE3ODI3NTc5MzksImV4cCI6MTc4NTM0OTkzOX0.cZtJT0CBeiieQphpcc5yZydkPIPIGqVKo_zoIjGPFXE";
 			const response = await fetch(`${API_BASE_URL}/profile`, {
 				headers: {
 					Authorization: `Bearer ${token}`,

@@ -13,7 +13,6 @@ import { colors } from "../constants/colors";
 //----------------------------------- CONSTANTS -----------------------------------//
 
 const API_BASE_URL = config.apiBaseUrl;
-SplashScreen.preventAutoHideAsync();
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -26,9 +25,11 @@ const Login = () => {
 	const [isReady, setReady] = useState(false);
 
 	useEffect(() => {
+		SplashScreen.preventAutoHideAsync();
 		(async () => {
 			try {
-				const token = await SecureStore.getItemAsync("authToken");
+				 const token = await SecureStore.getItemAsync("authToken");
+				// await SecureStore.setItemAsync("authToken", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI2YTQyNGUyODBhYWU1NTNlYTJmN2U5NmEiLCJzaWQiOiI2YTNjZGVkODcwNTY2OWE4ZjU5ODExMjUiLCJpYXQiOjE3ODI3NTc5MzksImV4cCI6MTc4NTM0OTkzOX0.cZtJT0CBeiieQphpcc5yZydkPIPIGqVKo_zoIjGPFXE");
 				if (token) {
 					const response = await fetch(`${API_BASE_URL}/profile`, {
 						headers: { Authorization: `Bearer ${token}` },
