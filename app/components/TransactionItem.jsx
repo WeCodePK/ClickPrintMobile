@@ -39,11 +39,18 @@ const TransactionItem = ({ transaction, onPress }) => {
 				</View>
 			</View>
 
-			<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-				<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
+			<View style={styles.transactionRight}>
+				{transaction.cost > 0 && (
+					<Text style={styles.transactionCost}>₹{transaction.cost}</Text>
+				)}
+				<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
+					<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
+				</View>
 			</View>
 		</TouchableOpacity>
 	);
+
+
 };
 
 const styles = StyleSheet.create({
@@ -64,6 +71,19 @@ const styles = StyleSheet.create({
 		gap: 12,
 		flex: 1,
 	},
+
+	transactionRight: {
+		alignItems: "flex-end",
+		justifyContent: "center",
+		gap: 6,
+	},
+	transactionCost: {
+		fontSize: 15,
+		fontWeight: "600",
+		color: colors.textPrimary,
+	},
+
+
 	transactionIcon: {
 		width: 40,
 		height: 40,

@@ -19,18 +19,23 @@ const PrintHistory = () => {
 	const [sortModalVisible, setSortModalVisible] = useState(false);
 	const [dateFrom, setDateFrom] = useState("");
 	const [dateTo, setDateTo] = useState("");
+	const [selectedStatus, setSelectedStatus] = useState("all");
 	const [sortBy, setSortBy] = useState("date");
 	const [sortOrder, setSortOrder] = useState("desc");
 
+	// Filter and Sort Logic
 	const filteredAndSortedTransactions = useMemo(() => {
 		let filtered = [...backendTransactions];
 
+		// Filter by Date From
 		if (dateFrom) {
 			const fromDate = new Date(dateFrom);
 			if (!isNaN(fromDate.getTime())) {
 				filtered = filtered.filter((t) => new Date(t.timestamp || t.date) >= fromDate);
 			}
 		}
+
+		// Filter by Date To
 		if (dateTo) {
 			const toDate = new Date(dateTo);
 			if (!isNaN(toDate.getTime())) {
@@ -38,6 +43,12 @@ const PrintHistory = () => {
 			}
 		}
 
+		// Filter by Status
+		if (selectedStatus && selectedStatus !== "all") {
+			filtered = filtered.filter((t) => t.status?.toLowerCase() === selectedStatus.toLowerCase());
+		}
+
+		// Sorting Logic
 		filtered.sort((a, b) => {
 			let comparison = 0;
 
@@ -51,6 +62,9 @@ const PrintHistory = () => {
 				case "fileCount":
 					comparison = a.fileCount - b.fileCount;
 					break;
+				case "cost":
+					comparison = (a.cost || 0) - (b.cost || 0);
+					break;
 				default:
 					comparison = 0;
 			}
@@ -59,11 +73,12 @@ const PrintHistory = () => {
 		});
 
 		return filtered;
-	}, [backendTransactions, dateFrom, dateTo, sortBy, sortOrder]);
+	}, [backendTransactions, dateFrom, dateTo, selectedStatus, sortBy, sortOrder]);
 
 	const clearFilters = () => {
 		setDateFrom("");
 		setDateTo("");
+		setSelectedStatus("all");
 		setSortBy("date");
 		setSortOrder("desc");
 	};
@@ -71,6 +86,7 @@ const PrintHistory = () => {
 	const activeFiltersCount = () => {
 		let count = 0;
 		if (dateFrom || dateTo) count++;
+		if (selectedStatus && selectedStatus !== "all") count++;
 		return count;
 	};
 
@@ -118,7 +134,6 @@ const PrintHistory = () => {
 			</View>
 
 			{/* Filter and Sort Bar */}
-
 			<View style={styles.filterBar}>
 				<TouchableOpacity style={styles.filterButton} onPress={() => setFilterModalVisible(true)}>
 					<Feather name="filter" size={18} color={colors.textPrimary} />
@@ -142,13 +157,19 @@ const PrintHistory = () => {
 				)}
 			</View>
 
-			{/* Transaction List */}
-
+			{/* Scrollable list showing all items at once */}
 			<ScrollView
 				style={styles.scrollView}
 				contentContainerStyle={styles.scrollContent}
 				showsVerticalScrollIndicator={false}
-				refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[colors.primary]} tintColor={colors.primary} />}
+				refreshControl={
+					<RefreshControl
+						refreshing={refreshing}
+						onRefresh={refresh}
+						colors={[colors.primary]}
+						tintColor={colors.primary}
+					/>
+				}
 			>
 				{filteredAndSortedTransactions.length === 0 ? (
 					<View style={styles.emptyContainer}>
@@ -157,14 +178,15 @@ const PrintHistory = () => {
 					</View>
 				) : (
 					<TransactionList
-							transactions={filteredAndSortedTransactions}
-							onTransactionPress={(t) => router.push({ pathname: "/transaction-details", params: { transaction: JSON.stringify(t) } })}
-						/>
+						transactions={filteredAndSortedTransactions}
+						onTransactionPress={(t) =>
+							router.push({ pathname: "/transaction-details", params: { transaction: JSON.stringify(t) } })
+						}
+					/>
 				)}
 			</ScrollView>
 
 			{/* Filter Modal */}
-
 			<Modal visible={filterModalVisible} animationType="slide" transparent={true} onRequestClose={() => setFilterModalVisible(false)}>
 				<View style={styles.modalOverlay}>
 					<View style={styles.modalContent}>
@@ -176,7 +198,6 @@ const PrintHistory = () => {
 						</View>
 
 						{/* Date Range Filter */}
-
 						<View style={styles.filterSection}>
 							<Text style={styles.filterLabel}>Date Range</Text>
 							<View style={styles.dateInputs}>
@@ -203,8 +224,33 @@ const PrintHistory = () => {
 							</View>
 						</View>
 
-						{/* Apply Button */}
+						{/* Status Filter */}
+						<View style={styles.filterSection}>
+							<Text style={styles.filterLabel}>Status</Text>
+							<View style={styles.statusOptions}>
+								{["all", "completed", "submitted", "processing", "pending", "cancelled"].map((status) => (
+									<TouchableOpacity
+										key={status}
+										style={[
+											styles.statusBadgeOption,
+											selectedStatus === status && styles.statusBadgeOptionSelected,
+										]}
+										onPress={() => setSelectedStatus(status)}
+									>
+										<Text
+											style={[
+												styles.statusBadgeOptionText,
+												selectedStatus === status && styles.statusBadgeOptionTextSelected,
+											]}
+										>
+											{status.charAt(0).toUpperCase() + status.slice(1)}
+										</Text>
+									</TouchableOpacity>
+								))}
+							</View>
+						</View>
 
+						{/* Apply Button */}
 						<TouchableOpacity style={styles.applyButton} onPress={() => setFilterModalVisible(false)}>
 							<Text style={styles.applyButtonText}>Apply Filters</Text>
 						</TouchableOpacity>
@@ -213,7 +259,6 @@ const PrintHistory = () => {
 			</Modal>
 
 			{/* Sort Modal */}
-
 			<Modal visible={sortModalVisible} animationType="slide" transparent={true} onRequestClose={() => setSortModalVisible(false)}>
 				<View style={styles.modalOverlay}>
 					<View style={styles.modalContent}>
@@ -281,8 +326,27 @@ const PrintHistory = () => {
 							)}
 						</TouchableOpacity>
 
-						{/* Apply Button */}
+						<TouchableOpacity
+							style={styles.sortOption}
+							onPress={() => {
+								if (sortBy === "cost") {
+									setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+								} else {
+									setSortBy("cost");
+									setSortOrder("desc");
+								}
+							}}
+						>
+							<View style={styles.sortOptionLeft}>
+								<Feather name="dollar-sign" size={20} color={colors.textPrimary} />
+								<Text style={styles.sortOptionText}>Cost</Text>
+							</View>
+							{sortBy === "cost" && (
+								<Feather name={sortOrder === "desc" ? "arrow-down" : "arrow-up"} size={20} color={colors.primary} />
+							)}
+						</TouchableOpacity>
 
+						{/* Apply Button */}
 						<TouchableOpacity style={styles.applyButton} onPress={() => setSortModalVisible(false)}>
 							<Text style={styles.applyButtonText}>Apply</Text>
 						</TouchableOpacity>
@@ -368,8 +432,6 @@ const styles = StyleSheet.create({
 	scrollContent: {
 		padding: 20,
 	},
-
-	// Modal Styles
 	modalOverlay: {
 		flex: 1,
 		backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -420,6 +482,33 @@ const styles = StyleSheet.create({
 		padding: 12,
 		fontSize: 14,
 		color: colors.textPrimary,
+	},
+	statusOptions: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		gap: 8,
+		marginBottom: 8,
+	},
+	statusBadgeOption: {
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		borderRadius: 16,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+		backgroundColor: colors.background,
+	},
+	statusBadgeOptionSelected: {
+		backgroundColor: colors.primary,
+		borderColor: colors.primary,
+	},
+	statusBadgeOptionText: {
+		fontSize: 13,
+		fontWeight: "500",
+		color: colors.textSecondary,
+	},
+	statusBadgeOptionTextSelected: {
+		color: colors.cardBackground,
+		fontWeight: "600",
 	},
 	applyButton: {
 		backgroundColor: colors.primary,

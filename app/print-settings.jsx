@@ -35,7 +35,7 @@ const PrintSettings = () => {
 	const [allSettings, setAllSettings] = useState(() =>
 		Array.from({ length: numberOfDocuments }, () => ({
 			color: "bw",
-			pageType: "a4",
+			pageType: "A4",
 			orientation: "portrait",
 			pagesPerSheet: 1,
 			numberOfCopies: "1",

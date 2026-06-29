@@ -24,6 +24,12 @@ const isValidAdvancedRange = (value) => {
 	return true;
 };
 
+const SIDEDNESS_OPTIONS = [
+	{ label: "Single", value: "none" },
+	{ label: "Double: short edge", value: "short" },
+	{ label: "Double: long edge", value: "long" },
+];
+
 //----------------------------------- COMPONENT -----------------------------------//
 
 const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, settings, onSettingsChange, onSubmitAll, onMoveNext, onCreateJob, loading, error }) => {
@@ -35,6 +41,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 	const [advancedRange, setAdvancedRange] = useState("");
 	const [isAdvancedRangeValid, setIsAdvancedRangeValid] = useState(false);
 	const [showPagesPerSheetDropdown, setShowPagesPerSheetDropdown] = useState(false);
+	const [showSidednessDropdown, setShowSidednessDropdown] = useState(false);
 
 	const colorMode = settings.color;
 	const orientation = settings.orientation;
@@ -42,6 +49,8 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 	const pageSize = settings.pageType;
 	const pagesPerSheet = settings.pagesPerSheet;
 	const numberOfCopies = settings.numberOfCopies;
+
+	const selectedSidednessOption = SIDEDNESS_OPTIONS.find((opt) => opt.value === sidedness) || SIDEDNESS_OPTIONS[0];
 
 	//----------------------------------- HANDLERS -----------------------------------//
 
@@ -181,11 +190,11 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 						<Text style={styles.settingLabel}>Number of Copies</Text>
 						<View style={styles.copiesContainer}>
 							<TouchableOpacity style={styles.copiesButton} onPress={() => handleCopiesChange(-1)}>
-								<Feather name="minus" size={20} color={colors.textPrimary} />
+								<Feather name="minus" size={18} color={colors.textPrimary} />
 							</TouchableOpacity>
 							<Text style={styles.copiesValue}>{numberOfCopies}</Text>
 							<TouchableOpacity style={styles.copiesButton} onPress={() => handleCopiesChange(1)}>
-								<Feather name="plus" size={20} color={colors.textPrimary} />
+								<Feather name="plus" size={18} color={colors.textPrimary} />
 							</TouchableOpacity>
 						</View>
 					</View>
@@ -212,23 +221,44 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 						onSelect={(val) => onSettingsChange("orientation", val)}
 					/>
 
-					{/* Sidedness */}
-					<SettingRow
-						label="Sidedness"
-						options={[
-							{ label: "Single", value: "single" },
-							{ label: "Double", value: "double" },
-						]}
-						selectedValue={sidedness}
-						onSelect={(val) => onSettingsChange("sidedness", val)}
-					/>
+					{/* Sidedness Dropdown */}
+					<View style={styles.settingRow}>
+						<Text style={styles.settingLabel}>Sidedness</Text>
+						<TouchableOpacity style={styles.dropdownButton} onPress={() => setShowSidednessDropdown(true)}>
+							<Text style={styles.dropdownButtonText}>{selectedSidednessOption.label}</Text>
+							<Feather name="chevron-down" size={18} color={colors.textPrimary} />
+						</TouchableOpacity>
+					</View>
+
+					<Modal visible={showSidednessDropdown} transparent animationType="fade" onRequestClose={() => setShowSidednessDropdown(false)}>
+						<TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSidednessDropdown(false)}>
+							<View style={styles.dropdownModal}>
+								<Text style={styles.dropdownModalTitle}>Sidedness</Text>
+								{SIDEDNESS_OPTIONS.map((opt) => (
+									<TouchableOpacity
+										key={opt.value}
+										style={[styles.dropdownOption, sidedness === opt.value && styles.dropdownOptionActive]}
+										onPress={() => {
+											onSettingsChange("sidedness", opt.value);
+											setShowSidednessDropdown(false);
+										}}
+									>
+										<Text style={[styles.dropdownOptionText, sidedness === opt.value && styles.dropdownOptionTextActive]}>
+											{opt.label}
+										</Text>
+										{sidedness === opt.value && <Feather name="check" size={18} color={colors.printRequest} />}
+									</TouchableOpacity>
+								))}
+							</View>
+						</TouchableOpacity>
+					</Modal>
 
 					{/* Page Size */}
 					<SettingRow
 						label="Page Size"
 						options={[
-							{ label: "A3", value: "a3" },
-							{ label: "A4", value: "a4" },
+							{ label: "A3", value: "A3" },
+							{ label: "A4", value: "A4" },
 						]}
 						selectedValue={pageSize}
 						onSelect={(val) => onSettingsChange("pageType", val)}
@@ -279,9 +309,9 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 										style={[
 											styles.advancedRangeInput,
 											advancedRange.length > 0 &&
-												(isAdvancedRangeValid
-													? styles.advancedRangeInputValid
-													: styles.advancedRangeInputInvalid),
+											(isAdvancedRangeValid
+												? styles.advancedRangeInputValid
+												: styles.advancedRangeInputInvalid),
 										]}
 										placeholder="e.g. 1,3,16-20,25"
 										placeholderTextColor={colors.textSecondary}
@@ -354,7 +384,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 								<ActivityIndicator size="small" color={colors.cardBackground} />
 							) : (
 								<>
-									<Text style={styles.submitButtonText}>Submit All with These Settings</Text>
+									<Text style={styles.submitButtonText}>Apply to All Documents</Text>
 									<Feather name="check-circle" size={20} color={colors.cardBackground} />
 								</>
 							)}
@@ -364,7 +394,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 							onPress={onMoveNext}
 							disabled={isActionDisabled()}
 						>
-							<Text style={styles.submitButtonText}>Move on to {documentNumber + 1} document</Text>
+							<Text style={styles.submitButtonText}>Next Document ({documentNumber + 1}/{totalDocuments})</Text>
 							<Feather name="arrow-right" size={20} color={colors.cardBackground} />
 						</TouchableOpacity>
 					</>
@@ -377,7 +407,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 						onPress={onMoveNext}
 						disabled={isActionDisabled()}
 					>
-						<Text style={styles.submitButtonText}>Move on to {documentNumber + 1} document</Text>
+						<Text style={styles.submitButtonText}>Next Document ({documentNumber + 1}/{totalDocuments})</Text>
 						<Feather name="arrow-right" size={20} color={colors.cardBackground} />
 					</TouchableOpacity>
 				)}
@@ -393,7 +423,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 							<ActivityIndicator size="small" color={colors.cardBackground} />
 						) : (
 							<>
-								<Text style={styles.submitButtonText}>Create Print Job</Text>
+								<Text style={styles.submitButtonText}>Continue</Text>
 								<Feather name="arrow-right" size={20} color={colors.cardBackground} />
 							</>
 						)}
@@ -654,7 +684,7 @@ const styles = StyleSheet.create({
 	copiesContainer: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
+		gap: 5,
 		flex: 0.5,
 		justifyContent: "flex-end",
 	},
@@ -729,4 +759,5 @@ const styles = StyleSheet.create({
 		color: colors.cardBackground,
 	},
 });
+
 export default DocumentSettingsForm;

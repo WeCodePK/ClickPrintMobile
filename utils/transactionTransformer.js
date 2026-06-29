@@ -10,6 +10,7 @@ const transformTransaction = (t) => {
 		fileCount: t.files?.length || 0,
 		files: t.files || [],
 		statusHistory: t.statusHistory || [],
+		cost: t.cost?.total || 0,
 	};
 };
 
