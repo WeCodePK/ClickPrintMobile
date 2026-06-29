@@ -41,7 +41,7 @@ const TransactionItem = ({ transaction, onPress }) => {
 
 			<View style={styles.transactionRight}>
 				{transaction.cost > 0 && (
-					<Text style={styles.transactionCost}>₹{transaction.cost}</Text>
+					<Text style={styles.transactionCost}>Rs. {transaction.cost}</Text>
 				)}
 				<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
 					<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>

@@ -48,14 +48,6 @@ export default function Layout() {
 			/>
 
 			<Tabs.Screen
-				name="drafts"
-				options={{
-					title: "Drafts",
-					tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "create" : "create-outline"} size={20} color={color} />,
-				}}
-			/>
-
-			<Tabs.Screen
 				name="printHistory"
 				options={{
 					title: " History",

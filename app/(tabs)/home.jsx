@@ -8,8 +8,8 @@ import { ActivityIndicator, Alert, Dimensions, RefreshControl, ScrollView, Statu
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../../config/config";
 import { colors } from "../../constants/colors";
-import { useTransactions } from "../../hooks/useTransactions";
-import TransactionList from "../components/TransactionList";
+import { useDrafts } from "../../hooks/useDrafts";
+import DraftItem from "../components/DraftItem";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -20,7 +20,7 @@ const API_BASE_URL = config.apiBaseUrl;
 
 const HomePage = () => {
 	const router = useRouter();
-	const { transactions, loading, error, refresh, refreshing } = useTransactions();
+	const { drafts, loading, error, refresh, refreshing } = useDrafts();
 	const [accountBalance, setAccountBalance] = useState(0);
 
 	useEffect(() => {
@@ -60,7 +60,7 @@ const HomePage = () => {
 	if (error) {
 		return (
 			<View style={styles.centerContainer}>
-				<Text style={styles.errorText}>Error loading transactions</Text>
+				<Text style={styles.errorText}>Error loading drafts</Text>
 				<TouchableOpacity onPress={refresh} style={styles.retryButton}>
 					<Text style={styles.retryText}>Retry</Text>
 				</TouchableOpacity>
@@ -121,25 +121,28 @@ const HomePage = () => {
 					</View>
 				</View>
 
-				{/* Transaction History - Latest 3 */}
+				{/* User Drafts */}
 
 				<View style={styles.transactionsContainer}>
 					<View style={styles.historyHeader}>
-						<Text style={styles.historyTitle}>Print History</Text>
-						<TouchableOpacity onPress={() => router.push("/printHistory")}>
-							<Text style={styles.seeAllText}>See All</Text>
-						</TouchableOpacity>
+						<Text style={styles.historyTitle}>My Drafts</Text>
 					</View>
 					{loading ? (
 						<View style={styles.loadingContainer}>
 							<ActivityIndicator size="large" color={colors.primary} />
 						</View>
+					) : drafts.length === 0 ? (
+						<View style={styles.emptyState}>
+							<Text style={styles.emptyText}>No drafts yet</Text>
+						</View>
 					) : (
-						<TransactionList
-							transactions={transactions}
-							limit={3}
-							onTransactionPress={(t) => router.push({ pathname: "/transaction-details", params: { transaction: JSON.stringify(t) } })}
-						/>
+						drafts.map((draft) => (
+							<DraftItem
+								key={draft._id}
+								draft={draft}
+								onPress={() => router.push({ pathname: "/draft-details", params: { draft: JSON.stringify(draft) } })}
+							/>
+						))
 					)}
 				</View>
 			</ScrollView>
@@ -290,10 +293,19 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		color: colors.textPrimary,
 	},
-	seeAllText: {
+	loadingContainer: {
+		paddingVertical: 40,
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	emptyState: {
+		paddingVertical: 40,
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	emptyText: {
 		fontSize: 14,
-		fontWeight: "600",
-		color: colors.primary,
+		color: colors.textSecondary,
 	},
 });
 export default HomePage;

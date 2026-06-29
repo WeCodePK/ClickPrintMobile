@@ -69,23 +69,11 @@ const PrintSettings = () => {
 		const firstSettings = allSettings[0];
 		const uniformSettings = Array.from({ length: numberOfDocuments }, () => ({ ...firstSettings }));
 		setAllSettings(uniformSettings);
-		Alert.alert("Submit All", "Apply these settings to all documents and create the print job?", [
-			{ text: "Cancel", style: "cancel" },
-			{
-				text: "Yes",
-				onPress: () => createPrintJob(uniformSettings),
-			},
-		]);
+		createPrintJob(uniformSettings);
 	};
 
 	const handleCreateJob = () => {
-		Alert.alert("Submit", "Ready to proceed?", [
-			{ text: "Cancel", style: "cancel" },
-			{
-				text: "Yes",
-				onPress: () => createPrintJob(allSettings),
-			},
-		]);
+		createPrintJob(allSettings);
 	};
 
 	//--------------------------------------- PRINT JOB CREATION --------------------------------------//
@@ -106,62 +94,53 @@ const PrintSettings = () => {
 			}
 		}
 
-		const filesArray = settingsArray.map((s, index) => [
-			{
-				fileId: parsedDocuments[index].fileId,
-				settings: {
-					color: s.color === "color",
-					pageType: s.pageType,
-					orientation: s.orientation,
-					pagesPerSheet: s.pagesPerSheet,
-					pageSelection: s.pageSelection || "all",
-					sidedness: s.sidedness,
-					numberOfCopies: parseInt(s.numberOfCopies),
-				},
+		const files = settingsArray.map((s, index) => ({
+			fileId: parsedDocuments[index].fileId,
+			settings: {
+				color: s.color === "color",
+				pageType: s.pageType,
+				orientation: s.orientation,
+				pagesPerSheet: s.pagesPerSheet,
+				pageSelection: s.pageSelection || "all",
+				sidedness: s.sidedness,
+				numberOfCopies: parseInt(s.numberOfCopies),
 			},
-		]);
+		}));
 
 		try {
 			setLoading(true);
 			setError(null);
-			let index = 0;
-			for (const files of filesArray) {
-				const body = {
-					forShop: shopId,
-					files: files,
-				};
-				console.log("Submitting print job with the following data:", JSON.stringify(body, null, 2));
+			const body = {
+				forShop: shopId,
+				files: files,
+			};
+			console.log("Submitting draft with the following data:", JSON.stringify(body, null, 2));
 
-				const response = await fetch(`${API_BASE_URL}/drafts`, {
-					method: "POST",
-					headers: {
-						Authorization: `Bearer ${token}`,
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify(body),
+			const response = await fetch(`${API_BASE_URL}/drafts`, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(body),
+			});
+			const data = await response.json();
+			if (response.status === 201) {
+				console.log("Draft created successfully:", data);
+				router.push({
+					pathname: "/draft-details",
+					params: { draft: JSON.stringify(data.data) },
 				});
-				const data = await response.json();
-				if (response.status === 201) {
-					console.log("Job created successfully for: ", parsedDocuments[index].name, data);
-					index++;
-				} else {
-					console.log("Error creating job:", data);
-					console.log("ERROR: ", data.message);
-					throw new Error(data.message);
-				}
+			} else {
+				console.log("Error creating draft:", data);
+				throw new Error(data.message);
 			}
 		} catch (err) {
 			console.error("Error submitting print settings:", err);
 			setError(err.message);
-			Alert.alert("Error", "Failed to create print job. Please try again.");
+			Alert.alert("Error", "Failed to create draft. Please try again.");
 		} finally {
 			setLoading(false);
-			Alert.alert("Success", "Print job(s) created successfully!", [
-				{
-					text: "OK",
-					onPress: () => router.push("/"),
-				},
-			]);
 		}
 	};
 
