@@ -39,7 +39,7 @@ const VerifyCode = () => {
 
 	const handleCodeChange = (value, index) => {
 		if (value.length > 1) {
-			// Handle paste: distribute digits across fields starting at current index
+
 			const digits = value.replace(/\D/g, "").slice(0, 5 - index);
 			if (!digits) return;
 			const newCodes = [...codes];
@@ -115,6 +115,8 @@ const VerifyCode = () => {
 		}
 	};
 
+
+
 	const handleResendCode = async () => {
 		if (timer > 0 || resending) return;
 		setResending(true);
@@ -149,6 +151,11 @@ const VerifyCode = () => {
 		inputRefs.current[0]?.focus();
 	};
 
+	const handleBack = () => {
+		setCodes(["", "", "", "", ""]);
+		router.replace("/");
+	};
+
 	const formatTimer = (seconds) => {
 		const mins = Math.floor(seconds / 60);
 		const secs = seconds % 60;
@@ -159,8 +166,8 @@ const VerifyCode = () => {
 
 	return (
 		<SafeAreaView style={styles.container}>
-			<TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-				<Ionicons name="arrow-back" size={24} color="#fff" />
+			<TouchableOpacity style={styles.backButton} onPress={handleBack}>
+				<Ionicons name="arrow-back" size={24} />
 			</TouchableOpacity>
 
 			<Text style={styles.title}>Enter verification code</Text>
@@ -172,6 +179,8 @@ const VerifyCode = () => {
 					<Text style={styles.whatsappText}>Whatsapp</Text>
 				</View>
 			</View>
+
+
 
 			<View style={styles.codeContainer}>
 				{codes.map((code, index) => (
@@ -188,6 +197,8 @@ const VerifyCode = () => {
 					/>
 				))}
 			</View>
+
+
 
 			<View style={styles.timerContainer}>
 				{timer > 0 ? (
@@ -284,6 +295,8 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 		paddingVertical: 10,
 	},
+
+
 	timerContainer: {
 		marginTop: "auto",
 		marginBottom: 30,

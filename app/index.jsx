@@ -13,83 +13,87 @@ import { colors } from "../constants/colors";
 //----------------------------------- CONSTANTS -----------------------------------//
 
 const API_BASE_URL = config.apiBaseUrl;
+const COUNTRY_CODE = "+92";
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
 const Login = () => {
 	const router = useRouter();
-	const [countryCode, setCountryCode] = useState("+92");
 	const [phone, setPhone] = useState("");
-	const [showPicker, setShowPicker] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [isReady, setReady] = useState(false);
 
 	useEffect(() => {
-		SplashScreen.preventAutoHideAsync();
 		(async () => {
 			try {
-				 const token = await SecureStore.getItemAsync("authToken");
-				// await SecureStore.setItemAsync("authToken", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI2YTQyNGUyODBhYWU1NTNlYTJmN2U5NmEiLCJzaWQiOiI2YTNjZGVkODcwNTY2OWE4ZjU5ODExMjUiLCJpYXQiOjE3ODI3NTc5MzksImV4cCI6MTc4NTM0OTkzOX0.cZtJT0CBeiieQphpcc5yZydkPIPIGqVKo_zoIjGPFXE");
+				const token = await SecureStore.getItemAsync("authToken");
 				if (token) {
 					const response = await fetch(`${API_BASE_URL}/profile`, {
 						headers: { Authorization: `Bearer ${token}` },
 					});
 					if (response.ok) {
-						await SplashScreen.hideAsync();
 						router.replace("(tabs)/home");
 						return;
 					}
 					await SecureStore.deleteItemAsync("authToken");
 				}
-				setReady(true);
 			} catch (error) {
 				console.log("Error validating token:", error);
+			} finally {
 				setReady(true);
 			}
 		})();
 	}, [router]);
 
-	const onLayoutRootView = useCallback(async () => {
-		if (isReady) {
-			await SplashScreen.hideAsync();
-		}
-	}, [isReady]);
 
 	if (!isReady) {
 		return null;
 	}
 
-	const countryCodes = [{ label: "🇵🇰 Pakistan +92", value: "+92" }];
+	const sanitizePhone = (raw) => {
+		const digitsOnly = raw.replace(/[^0-9]/g, "");
+		return digitsOnly.replace(/^0/, "");
+	};
 
-	const numberWithPlus = countryCode + phone;
-	const number = numberWithPlus.slice(1);
+	const handlePhoneChange = (text) => {
+		setPhone(sanitizePhone(text));
+	};
 
-	const isValidPhone = phone.length > 0 && phone.length <= 11 && /^[1-9]\d{7,14}$/.test(number);
+	const isValidPhone = /^3\d{9}$/.test(phone);
 
 	const handleContinue = async () => {
 		if (!isValidPhone) {
 			Alert.alert("Please enter a valid phone number.");
 			return;
 		}
-		setLoading(true);
-		console.log("Requesting OTP for:", number);
-		try {
 
+		setLoading(true);
+		console.log("Requesting OTP for:", phone);
+
+		try {
 			const response = await fetch(`${API_BASE_URL}/auth/otp`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ number: number }),
+				body: JSON.stringify({ number: `92${phone}` }),
 			});
+
+			if (!response.ok) {
+				Alert.alert("Error", "Failed to send OTP. Please try again.");
+				console.error("OTP request failed with status:", response.status);
+				return;
+			}
+
 			const data = await response.json();
 			console.log(data.message);
 			if (data.success) {
-				router.replace({ pathname: "/otp", params: { phone: number } });
+				router.replace({ pathname: "/otp", params: { phone : `92${phone}`} });
 			} else {
 				Alert.alert("Error", "Failed to send OTP. Please try again.");
 				console.error("OTP request failed:", data.message);
 			}
+
 		} catch (error) {
 			console.error("Error sending OTP:", error);
 			if (error.message === "Network request failed") {
@@ -102,71 +106,24 @@ const Login = () => {
 		}
 	};
 
-	const selectCountryCode = (code) => {
-		setCountryCode(code);
-		setShowPicker(false);
-	};
 
-	const getSelectedCountryDisplay = () => {
-		const selected = countryCodes.find((c) => c.value === countryCode);
-		if (selected) {
-			const parts = selected.label.split(" ");
-			if (parts.length >= 3) {
-				return `${parts[0]} ${parts[parts.length - 1]}`;
-			}
-			return selected.label;
-		}
-		return countryCode;
-	};
 
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
 		<KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-			<TouchableWithoutFeedback
-				onPress={() => {
-					Keyboard.dismiss();
-					setShowPicker(false);
-				}}
-				accessible={false}
-			>
-				<SafeAreaView style={styles.container} onLayout={onLayoutRootView}>
+			<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+				<SafeAreaView style={styles.container}>
 					<Text style={styles.heading}>Let&apos;s get started!</Text>
 					<Text style={styles.subHeading}>Please enter your mobile number</Text>
 
 					<View style={styles.phoneRow}>
-						{/* Country Code */}
-						<View style={styles.countryCodeWrapper}>
-							<TouchableOpacity style={styles.countryBox} onPress={() => setShowPicker(!showPicker)}>
-								<Text style={styles.countryCodeText}>{getSelectedCountryDisplay()}</Text>
-								<Ionicons name={showPicker ? "chevron-up" : "chevron-down"} size={18} color="#000" />
-							</TouchableOpacity>
-
-							{/* Dropdown */}
-							{showPicker && (
-								<View style={styles.dropdown}>
-									{countryCodes.map((item) => (
-										<TouchableOpacity
-											key={item.value}
-											style={[styles.dropdownOption, countryCode === item.value && styles.dropdownOptionSelected]}
-											onPress={() => selectCountryCode(item.value)}
-										>
-											<Text
-												style={[
-													styles.dropdownOptionText,
-													countryCode === item.value && styles.dropdownOptionTextSelected,
-												]}
-											>
-												{item.label}
-											</Text>
-											{countryCode === item.value && <Ionicons name="checkmark" size={18} color="#FF4F00" />}
-										</TouchableOpacity>
-									))}
-								</View>
-							)}
+						
+						<View style={styles.countryBox}>
+							<Text style={styles.countryCodeText}>🇵🇰 {COUNTRY_CODE}</Text>
 						</View>
 
-						{/* Phone Input */}
+					
 						<View style={styles.phoneBox}>
 							<TextInput
 								style={styles.input}
@@ -174,8 +131,8 @@ const Login = () => {
 								placeholderTextColor="#999"
 								keyboardType="number-pad"
 								value={phone}
-								onChangeText={setPhone}
-								maxLength={15}
+								onChangeText={handlePhoneChange}
+								maxLength={10}
 							/>
 						</View>
 					</View>
@@ -224,18 +181,12 @@ const styles = StyleSheet.create({
 		marginTop: 5,
 		marginLeft: 5,
 	},
+
+
 	phoneRow: {
 		flexDirection: "row",
-		alignItems: "flex-start",
+		alignItems: "center",
 		marginBottom: 30,
-		position: "relative",
-		zIndex: 1,
-	},
-
-	countryCodeWrapper: {
-		position: "relative",
-		zIndex: 10,
-		marginRight: 10,
 	},
 
 	countryBox: {
@@ -245,7 +196,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 14,
 		height: 40,
 		borderRadius: 25,
-		gap: 6,
+		marginRight: 10,
 	},
 
 	phoneBox: {
@@ -261,52 +212,10 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 		color: "#000",
 	},
-
 	countryCodeText: {
 		color: "#000",
 		fontSize: 14,
 		fontWeight: "500",
-	},
-	dropdown: {
-		position: "absolute",
-		top: 55,
-		left: 0,
-		right: 0,
-		backgroundColor: "#fff",
-		borderRadius: 12,
-		paddingVertical: 8,
-		shadowColor: "#000",
-		shadowOffset: {
-			width: 0,
-			height: 2,
-		},
-		shadowOpacity: 0.25,
-		shadowRadius: 8,
-		elevation: 5,
-		minWidth: 180,
-		zIndex: 1000,
-	},
-	dropdownOption: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		borderRadius: 8,
-		marginHorizontal: 8,
-		marginVertical: 2,
-	},
-	dropdownOptionSelected: {
-		backgroundColor: "#fff3f0",
-	},
-	dropdownOptionText: {
-		fontSize: 15,
-		color: "#000",
-		flex: 1,
-	},
-	dropdownOptionTextSelected: {
-		color: "#FF4F00",
-		fontWeight: "600",
 	},
 	button: {
 		flexDirection: "row",
@@ -322,6 +231,7 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.navInactive,
 		opacity: 1,
 	},
+
 	buttonText: {
 		color: "#fff",
 		fontSize: 16,
@@ -329,4 +239,5 @@ const styles = StyleSheet.create({
 		fontWeight: "bold",
 	},
 });
+
 export default Login;
