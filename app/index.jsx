@@ -21,9 +21,9 @@ const Login = () => {
 	const router = useRouter();
 	const [phone, setPhone] = useState("");
 	const [loading, setLoading] = useState(false);
-	const [isReady, setReady] = useState(false);
 
 	useEffect(() => {
+
 		(async () => {
 			try {
 				const token = await SecureStore.getItemAsync("authToken");
@@ -32,23 +32,24 @@ const Login = () => {
 						headers: { Authorization: `Bearer ${token}` },
 					});
 					if (response.ok) {
+						const data = await response.json();
+						if (data.data?.profile?.name) {
+							await SecureStore.setItemAsync("name", data.data.profile.name);
+						}
 						router.replace("(tabs)/home");
 						return;
 					}
 					await SecureStore.deleteItemAsync("authToken");
+					await SecureStore.deleteItemAsync("name");
 				}
 			} catch (error) {
 				console.log("Error validating token:", error);
 			} finally {
-				setReady(true);
+
+				await SplashScreen.hideAsync();
 			}
 		})();
 	}, [router]);
-
-
-	if (!isReady) {
-		return null;
-	}
 
 	const sanitizePhone = (raw) => {
 		const digitsOnly = raw.replace(/[^0-9]/g, "");
@@ -88,7 +89,7 @@ const Login = () => {
 			const data = await response.json();
 			console.log(data.message);
 			if (data.success) {
-				router.replace({ pathname: "/otp", params: { phone : `92${phone}`} });
+				router.replace({ pathname: "/otp", params: { phone: `92${phone}` } });
 			} else {
 				Alert.alert("Error", "Failed to send OTP. Please try again.");
 				console.error("OTP request failed:", data.message);
@@ -118,12 +119,12 @@ const Login = () => {
 					<Text style={styles.subHeading}>Please enter your mobile number</Text>
 
 					<View style={styles.phoneRow}>
-						
+
 						<View style={styles.countryBox}>
 							<Text style={styles.countryCodeText}>🇵🇰 {COUNTRY_CODE}</Text>
 						</View>
 
-					
+
 						<View style={styles.phoneBox}>
 							<TextInput
 								style={styles.input}

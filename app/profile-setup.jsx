@@ -89,9 +89,9 @@ const ProfileSetup = () => {
 				}),
 			});
 			const data = await response.json();
-			await SecureStore.setItemAsync("name", data.data.profile.name);
 			console.log(data);
 			if (response.ok) {
+				await SecureStore.setItemAsync("name", data.data.profile.name);
 				setSuccess(true);
 
 				// Success animation
