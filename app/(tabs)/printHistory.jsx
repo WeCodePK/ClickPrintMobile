@@ -125,6 +125,8 @@ const PrintHistory = () => {
 		);
 	}
 
+	const isFilterSortDisabled = backendTransactions.length <= 1;
+
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
@@ -135,9 +137,13 @@ const PrintHistory = () => {
 
 			{/* Filter and Sort Bar */}
 			<View style={styles.filterBar}>
-				<TouchableOpacity style={styles.filterButton} onPress={() => setFilterModalVisible(true)}>
-					<Feather name="filter" size={18} color={colors.textPrimary} />
-					<Text style={styles.filterButtonText}>Filter</Text>
+				<TouchableOpacity 
+					style={[styles.filterButton, isFilterSortDisabled && { opacity: 0.5 }]} 
+					onPress={() => setFilterModalVisible(true)}
+					disabled={isFilterSortDisabled}
+				>
+					<Feather name="filter" size={18} color={isFilterSortDisabled ? colors.textSecondary : colors.textPrimary} />
+					<Text style={[styles.filterButtonText, isFilterSortDisabled && { color: colors.textSecondary }]}>Filter</Text>
 					{activeFiltersCount() > 0 && (
 						<View style={styles.filterBadge}>
 							<Text style={styles.filterBadgeText}>{activeFiltersCount()}</Text>
@@ -145,9 +151,13 @@ const PrintHistory = () => {
 					)}
 				</TouchableOpacity>
 
-				<TouchableOpacity style={styles.filterButton} onPress={() => setSortModalVisible(true)}>
-					<Feather name="arrow-up-right" size={18} color={colors.textPrimary} />
-					<Text style={styles.filterButtonText}>Sort</Text>
+				<TouchableOpacity 
+					style={[styles.filterButton, isFilterSortDisabled && { opacity: 0.5 }]} 
+					onPress={() => setSortModalVisible(true)}
+					disabled={isFilterSortDisabled}
+				>
+					<Feather name="arrow-up-right" size={18} color={isFilterSortDisabled ? colors.textSecondary : colors.textPrimary} />
+					<Text style={[styles.filterButtonText, isFilterSortDisabled && { color: colors.textSecondary }]}>Sort</Text>
 				</TouchableOpacity>
 
 				{activeFiltersCount() > 0 && (
@@ -157,7 +167,7 @@ const PrintHistory = () => {
 				)}
 			</View>
 
-			{/* Scrollable list showing all items at once */}
+			{/* Scrollable list */}
 			<ScrollView
 				style={styles.scrollView}
 				contentContainerStyle={styles.scrollContent}
