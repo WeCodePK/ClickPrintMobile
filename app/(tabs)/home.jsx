@@ -208,9 +208,6 @@ const HomePage = () => {
 						<View style={styles.listCard}>
 							<View style={styles.activeJobsHeader}>
 								<Text style={styles.activeJobsTitle}>Active Jobs</Text>
-								<View style={styles.activeJobsBadge}>
-									<Text style={styles.activeJobsBadgeText}>{activeJobs.length}</Text>
-								</View>
 							</View>
 							<View style={styles.innerListContainer}>
 								{loadingJobs ? (
@@ -417,19 +414,6 @@ const styles = StyleSheet.create({
 		fontSize: 18,
 		fontWeight: "700",
 		color: colors.textPrimary,
-	},
-	activeJobsBadge: {
-		backgroundColor: colors.creditWallet,
-		width: 22,
-		height: 22,
-		borderRadius: 11,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	activeJobsBadgeText: {
-		fontSize: 12,
-		fontWeight: "700",
-		color: colors.cardBackground,
 	},
 });
 export default HomePage;

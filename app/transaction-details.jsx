@@ -5,6 +5,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/colors";
+import { useState, useEffect } from "react";
+import * as SecureStore from "expo-secure-store";
+import config from "../config/config";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -12,6 +15,8 @@ const STATUS_CONFIG = {
 	completed: { label: "Completed", color: colors.primary, bg: "rgba(0, 217, 163, 0.12)" },
 	submitted: { label: "Submitted", color: colors.creditWallet, bg: "rgba(59, 158, 255, 0.12)" },
 	processing: { label: "Processing", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
+	queued: { label: "Queued", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
+	printing: { label: "Printing", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
 	cancelled: { label: "Cancelled", color: colors.printRequest, bg: "rgba(255, 139, 123, 0.12)" },
 	pending: { label: "Pending", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
 };
@@ -58,6 +63,27 @@ const TransactionDetails = () => {
 		bg: colors.background,
 	};
 
+	const [shopName, setShopName] = useState("Print Job");
+
+	useEffect(() => {
+		const fetchShopName = async () => {
+			if (!transaction.shopId) return;
+			try {
+				const token = await SecureStore.getItemAsync("authToken");
+				const res = await fetch(`${config.apiBaseUrl}/shops/${transaction.shopId}`, {
+					headers: { Authorization: `Bearer ${token}` }
+				});
+				const data = await res.json();
+				if (data.success && data.data?.shop?.name) {
+					setShopName(data.data.shop.name);
+				}
+			} catch (e) {
+				console.error("Error fetching shop name:", e);
+			}
+		};
+		fetchShopName();
+	}, [transaction.shopId]);
+
 	const formatDateTime = (isoString) => {
 		const date = new Date(isoString);
 		return date.toLocaleString("en-US", {
@@ -68,6 +94,45 @@ const TransactionDetails = () => {
 			minute: "2-digit",
 			hour12: true,
 		});
+	};
+
+	const PROGRESS_STEPS = ["submitted", "queued", "printing", "completed"];
+
+	const renderProgressBar = (currentStatus) => {
+		const statusLower = currentStatus.toLowerCase();
+		if (statusLower === "cancelled") {
+			return (
+				<View style={styles.progressBarContainer}>
+					<View style={[styles.progressSegment, { backgroundColor: colors.printRequest, width: '100%' }]} />
+				</View>
+			);
+		}
+
+		let currentIndex = PROGRESS_STEPS.indexOf(statusLower);
+		if (currentIndex === -1) {
+			if (statusLower === "pending") currentIndex = 0;
+			else if (statusLower === "processing") currentIndex = 2;
+			else currentIndex = 0;
+		}
+
+		const activeColor = statusConfig.color || colors.primary;
+
+		return (
+			<View style={styles.progressBarContainer}>
+				{PROGRESS_STEPS.map((step, index) => {
+					const isCompleted = index <= currentIndex;
+					return (
+						<View 
+							key={step} 
+							style={[
+								styles.progressSegment, 
+								{ backgroundColor: isCompleted ? activeColor : colors.borderLight }
+							]} 
+						/>
+					);
+				})}
+			</View>
+		);
 	};
 
 	//----------------------------------- RENDER -----------------------------------//
@@ -89,11 +154,13 @@ const TransactionDetails = () => {
 					<View style={styles.summaryIconContainer}>
 						<Feather name="printer" size={32} color={colors.printRequest} />
 					</View>
-					<Text style={styles.summaryTitle}>Print Job</Text>
+					<Text style={styles.summaryTitle}>{shopName}</Text>
 					<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
 						<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
 					</View>
 					<Text style={styles.summaryDate}>{formatDateTime(transaction.timestamp)}</Text>
+					
+					{renderProgressBar(transaction.status)}
 				</View>
 
 				{/* Job Info */}
@@ -103,7 +170,6 @@ const TransactionDetails = () => {
 						<Text style={styles.sectionTitle}>Job Info</Text>
 					</View>
 					<View style={styles.card}>
-						<InfoRow label="Job ID" value={transaction.id} mono />
 						<InfoRow label="Total Files" value={`${transaction.fileCount} file${transaction.fileCount !== 1 ? "s" : ""}`} />
 					</View>
 				</View>
@@ -266,6 +332,18 @@ const styles = StyleSheet.create({
 	summaryDate: {
 		fontSize: 13,
 		color: colors.textSecondary,
+	},
+	progressBarContainer: {
+		flexDirection: "row",
+		width: "100%",
+		height: 6,
+		gap: 6,
+		marginTop: 20,
+		marginBottom: 4,
+	},
+	progressSegment: {
+		flex: 1,
+		borderRadius: 3,
 	},
 	section: {
 		marginBottom: 20,
