@@ -2,7 +2,7 @@
 
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useState } from "react";
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -137,8 +137,8 @@ const UploadDocument = () => {
 			const body = await response.json();
 			console.log(fileName, " : ", body);
 			if (response.status === 201) {
-				console.log("Document uploaded successfully named ", fileName, " with id ", body.data.fileId);
-				return body.data.fileId;
+				console.log("Document uploaded successfully named ", fileName, " with id ", body.data.file._id);
+				return body.data.file._id;
 			} else {
 				console.log("error in uploading document named ", fileName, ":", body.message);
 				return null;
