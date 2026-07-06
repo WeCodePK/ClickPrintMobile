@@ -5,6 +5,7 @@ import { useState, useRef } from "react";
 import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import { colors } from "../../../constants/colors";
 import SettingRow from "./SettingRow";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 
 
@@ -42,6 +43,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 	const [isAdvancedRangeValid, setIsAdvancedRangeValid] = useState(false);
 	const [showPagesPerSheetDropdown, setShowPagesPerSheetDropdown] = useState(false);
 	const [showSidednessDropdown, setShowSidednessDropdown] = useState(false);
+	const insets = useSafeAreaInsets();
 
 	const scrollViewRef = useRef(null);
 	const startPageInputRef = useRef(null);
@@ -392,7 +394,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 			</ScrollView>
 
 			{/* Footer Buttons */}
-			<View style={styles.footer}>
+			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
 				{/* First doc with multiple docs: "Submit All" + "Move on" */}
 				{!isSingleDoc && isFirstDoc && (
 					<>
@@ -529,7 +531,7 @@ const styles = StyleSheet.create({
 		borderWidth: 1.5,
 		borderColor: colors.borderLight,
 		backgroundColor: colors.background,
-		minWidth: 100,
+		minWidth: 150, // fixed instead of minWidth: 100
 		gap: 8,
 	},
 	dropdownButtonText: {
@@ -677,7 +679,7 @@ const styles = StyleSheet.create({
 	copiesContainer: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 10,
+		gap: 17,
 	},
 	copiesButton: {
 		width: 40,
@@ -736,6 +738,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 16,
 		borderRadius: 12,
 		gap: 8,
+		marginBottom: 10,
 	},
 	submitAllButton: {
 		backgroundColor: colors.primary,

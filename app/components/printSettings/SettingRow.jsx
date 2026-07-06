@@ -43,15 +43,17 @@ const styles = StyleSheet.create({
 	buttonsContainer: {
 		flexDirection: "row",
 		gap: 10,
+		flex: 1,
+		justifyContent: "flex-end",
 	},
 	optionButton: {
+		flex: 1,
+		maxWidth: 70,
 		paddingVertical: 10,
-		paddingHorizontal: 16,
 		borderRadius: 8,
 		borderWidth: 1.5,
 		borderColor: colors.navInactive,
 		backgroundColor: colors.cardBackground,
-		minWidth: 72,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -60,7 +62,7 @@ const styles = StyleSheet.create({
 		borderColor: colors.printRequest,
 	},
 	optionButtonText: {
-		fontSize: 13,
+		fontSize: 11,
 		fontWeight: "600",
 		color: colors.navInactive,
 		textAlign: "center",

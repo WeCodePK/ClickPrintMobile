@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 
@@ -51,6 +51,7 @@ const DraftDetails = () => {
 	const router = useRouter();
 	const params = useLocalSearchParams();
 	const [submitting, setSubmitting] = useState(false);
+	const insets = useSafeAreaInsets();
 
 	let draft = null;
 	try {
@@ -245,7 +246,7 @@ const DraftDetails = () => {
 			</ScrollView>
 
 			{/* Footer Submit Button */}
-			<View style={styles.footer}>
+			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
 				<TouchableOpacity
 					style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
 					onPress={handleSubmitDraft}
