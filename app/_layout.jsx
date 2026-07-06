@@ -1,9 +1,12 @@
 import * as SplashScreen from "expo-splash-screen";
+import * as SystemUI from "expo-system-ui";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useRef } from "react";
 import { AuthProvider, useAuth } from "../context/auth";
+import { colors } from "../constants/colors";
 
 SplashScreen.preventAutoHideAsync();
+SystemUI.setBackgroundColorAsync(colors.background);
 
 function RootNavigation() {
   const { authState } = useAuth();

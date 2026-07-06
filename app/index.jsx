@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
@@ -17,10 +17,30 @@ const COUNTRY_CODE = "+92";
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
+const KEYBOARD_EXTRA_OFFSET = 20;
+
 const Login = () => {
 	const router = useRouter();
 	const [phone, setPhone] = useState("");
 	const [loading, setLoading] = useState(false);
+	const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+	useEffect(() => {
+		const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+		const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+		const showSub = Keyboard.addListener(showEvent, (e) => {
+			setKeyboardOffset(e.endCoordinates.height + KEYBOARD_EXTRA_OFFSET);
+		});
+		const hideSub = Keyboard.addListener(hideEvent, () => {
+			setKeyboardOffset(0);
+		});
+
+		return () => {
+			showSub.remove();
+			hideSub.remove();
+		};
+	}, []);
 
 	const sanitizePhone = (raw) => {
 		const digitsOnly = raw.replace(/[^0-9]/g, "");
@@ -83,9 +103,9 @@ const Login = () => {
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
-		<KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+		<View style={{ flex: 1, backgroundColor: colors.background }}>
 			<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-				<SafeAreaView style={styles.container}>
+				<SafeAreaView style={[styles.container, { paddingBottom: keyboardOffset }]}>
 					<Text style={styles.heading}>Let&apos;s get started!</Text>
 					<Text style={styles.subHeading}>Please enter your mobile number</Text>
 
@@ -125,7 +145,7 @@ const Login = () => {
 					</TouchableOpacity>
 				</SafeAreaView>
 			</TouchableWithoutFeedback>
-		</KeyboardAvoidingView>
+		</View>
 	);
 };
 
@@ -137,6 +157,7 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.background,
 		paddingHorizontal: 20,
 		justifyContent: "center",
+		marginBottom: 10,
 	},
 	heading: {
 		fontSize: 28,
@@ -197,7 +218,8 @@ const styles = StyleSheet.create({
 		paddingVertical: 15,
 		borderRadius: 10,
 		marginTop: "auto",
-		marginBottom: 5,
+		
+		
 	},
 	buttonDisabled: {
 		backgroundColor: colors.navInactive,
