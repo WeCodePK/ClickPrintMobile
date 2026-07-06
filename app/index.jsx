@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
 		paddingVertical: 15,
 		borderRadius: 10,
 		marginTop: "auto",
-		marginBottom: 40,
+		marginBottom: 5,
 	},
 	buttonDisabled: {
 		backgroundColor: colors.navInactive,
