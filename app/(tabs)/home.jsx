@@ -14,7 +14,6 @@ import ActiveJobCard from "../components/ActiveJobCard";
 import DraftItem from "../components/DraftItem";
 import { useAuth } from "../../context/auth";
 
-
 //----------------------------------- CONSTANTS -----------------------------------//
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -45,7 +44,7 @@ const HomePage = () => {
 		if (error && error.includes("401")) {
 			signOut().then(() => router.replace("/"));
 		}
-	}, [error]);
+	}, [error, router, signOut]);
 
 	const fetchBalance = async () => {
 		try {

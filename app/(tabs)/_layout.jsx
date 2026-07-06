@@ -2,19 +2,33 @@
 
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useEffect } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../../constants/colors";
+import * as Notifications from 'expo-notifications';
+import { createAndroidNotificationChannel } from "../../services/notifications";
 
-//----------------------------------- COMPONENTS -----------------------------------//
+//----------------------------------- FOREGROUND NOTIFICATION -----------------------------------//
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+	shouldPlaySound: true,
+	shouldSetBadge: false, // don't set badge count on app icon
+	shouldShowBanner: true,
+	shouldShowList: false, // don't persist in notification center
+  }),
+});
 
 export default function Layout() {
 	const insets = useSafeAreaInsets();
 
-
-	
+	useEffect(() => {
+		(async () => {
+			await createAndroidNotificationChannel();
+		})();
+	}, []);
 
 	return (
-		// main tab component and styling
 		<Tabs
 			screenOptions={{
 				headerShown: false,
