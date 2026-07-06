@@ -38,5 +38,6 @@ export const useJobs = () => {
 		error,
 		refreshing,
 		refresh,
+		reload: loadJobs,
 	};
 };

@@ -5,7 +5,7 @@ import config from "../config/config"
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [authState, setAuthState] = useState("checking"); // "checking" | "authed" | "guest"
+  const [authState, setAuthState] = useState("checking"); 
 
   useEffect(() => {
     (async () => {
@@ -32,13 +32,13 @@ export function AuthProvider({ children }) {
 
   const signIn = async (token) => {
     await SecureStore.setItemAsync("authToken", token);
-    setAuthState("authed"); // <-- this is what was missing
+    setAuthState("authed"); 
   };
 
   const signOut = async () => {
     await SecureStore.deleteItemAsync("authToken");
     await SecureStore.deleteItemAsync("name");
-    setAuthState("guest"); // <-- and this
+    setAuthState("guest"); 
   };
 
   return (

@@ -22,7 +22,6 @@ const VerifyCode = () => {
 	const router = useRouter();
 	const params = useLocalSearchParams();
 	const phoneNumber = params.phone;
-	const fromEditProfile = params.fromEditProfile === "true";
 
 	const [codes, setCodes] = useState(["", "", "", "", ""]);
 	const [timer, setTimer] = useState(90);
@@ -93,17 +92,7 @@ const VerifyCode = () => {
 				await signIn(body.data.token)
 				console.log("OTP verified successfully for", phoneNumber);
 
-				if (fromEditProfile) {
-					router.replace({
-						pathname: "/edit-profile",
-						params: {
-							phoneVerified: "true",
-							phone: phoneNumber,
-							tempName: params.tempName || "",
-							tempAvatar: params.tempAvatar || "",
-						},
-					});
-				} else if (body.data.profile && body.data.profile.name) {
+	 			if (body.data.profile && body.data.profile.name) {
 					await SecureStore.setItemAsync("name", body.data.profile.name);
 					router.replace("/(tabs)/home");
 				} else {

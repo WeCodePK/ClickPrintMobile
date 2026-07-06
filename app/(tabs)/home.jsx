@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Dimensions, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Dimensions, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../../config/config";
 import { colors } from "../../constants/colors";
@@ -24,8 +24,8 @@ const API_BASE_URL = config.apiBaseUrl;
 
 const HomePage = () => {
 	const router = useRouter();
-	const { drafts, loading, error, refresh, refreshing } = useDrafts();
-	const { activeJobs, loading: loadingJobs, refresh: refreshJobs } = useActiveJobs();
+	const { drafts, loading, error, refresh, refreshing, reload } = useDrafts();
+	const { activeJobs, loading: loadingJobs, refresh: refreshJobs, reload: reloadJobs } = useActiveJobs();
 	const [accountBalance, setAccountBalance] = useState(0);
 	const { signOut } = useAuth();
 
@@ -35,10 +35,10 @@ const HomePage = () => {
 
 	useFocusEffect(
 		useCallback(() => {
-			refresh();
-			refreshJobs();
+			reload();
+			reloadJobs();
 			fetchBalance();
-		}, [refresh, refreshJobs])
+		}, [reload, reloadJobs])
 	);
 
 	useEffect(() => {
@@ -120,9 +120,6 @@ const HomePage = () => {
 			</View>
 		);
 	}
-	const showDrafts = drafts.length > 0 || loading || (!loading && !loadingJobs && drafts.length === 0 && activeJobs.length === 0);
-	const showActiveJobs = activeJobs.length > 0 || loadingJobs;
-
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
@@ -179,57 +176,37 @@ const HomePage = () => {
 
 				<View style={styles.listsWrapper}>
 					{/* User Drafts */}
-					{showDrafts && (
+					{!loading && drafts.length > 0 && (
 						<View style={styles.listCard}>
 							<View style={styles.historyHeader}>
 								<Text style={styles.historyTitle}>My Drafts</Text>
 							</View>
 							<View style={styles.innerListContainer}>
-								{loading ? (
-									<View style={styles.loadingContainer}>
-										<ActivityIndicator size="large" color={colors.primary} />
-									</View>
-								) : drafts.length === 0 ? (
-									<View style={styles.emptyState}>
-										<Text style={styles.emptyText}>No drafts yet</Text>
-									</View>
-								) : (
-									drafts.map((draft) => (
-										<DraftItem
-											key={draft._id}
-											draft={draft}
-											onPress={() => handleDraftPress(draft)}
-										/>
-									))
-								)}
+								{drafts.map((draft) => (
+									<DraftItem
+										key={draft._id}
+										draft={draft}
+										onPress={() => handleDraftPress(draft)}
+									/>
+								))}
 							</View>
 						</View>
 					)}
 
 					{/* Active Jobs */}
-					{showActiveJobs && (
+					{!loadingJobs && activeJobs.length > 0 && (
 						<View style={styles.listCard}>
 							<View style={styles.activeJobsHeader}>
 								<Text style={styles.activeJobsTitle}>Active Jobs</Text>
 							</View>
 							<View style={styles.innerListContainer}>
-								{loadingJobs ? (
-									<View style={styles.loadingContainer}>
-										<ActivityIndicator size="large" color={colors.primary} />
-									</View>
-								) : activeJobs.length === 0 ? (
-									<View style={styles.emptyState}>
-										<Text style={styles.emptyText}>No active jobs</Text>
-									</View>
-								) : (
-									activeJobs.map((job) => (
-										<ActiveJobCard
-											key={job.id}
-											job={job}
-											onPress={() => router.push({ pathname: "/transaction-details", params: { transaction: JSON.stringify(job) } })}
-										/>
-									))
-								)}
+								{activeJobs.map((job) => (
+									<ActiveJobCard
+										key={job.id}
+										job={job}
+										onPress={() => router.push({ pathname: "/transaction-details", params: { transaction: JSON.stringify(job) } })}
+									/>
+								))}
 							</View>
 						</View>
 					)}

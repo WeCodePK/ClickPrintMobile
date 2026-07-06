@@ -16,30 +16,30 @@ const DocumentCard = ({ doc, index, onRemove }) => {
 				</View>
 				<View style={styles.documentInfo}>
 					<TouchableOpacity onPress={() => setExpanded((prev) => !prev)} activeOpacity={0.7}>
-					<Text style={styles.documentOriginalName} numberOfLines={expanded ? undefined : 1}>
-						{doc.file.name}
-					</Text>
-				</TouchableOpacity>
-				<Text style={styles.documentFileSize}>{(doc.file.size / 1024).toFixed(2)} KB</Text>
+						<Text style={styles.documentOriginalName} numberOfLines={expanded ? undefined : 1}>
+							{doc.file.name}
+						</Text>
+					</TouchableOpacity>
+					<Text style={styles.documentFileSize}>{(doc.file.size / 1024).toFixed(2)} KB</Text>
+				</View>
+				{doc.status === "uploading" ? (
+					<View style={styles.statusContainer}>
+						<ActivityIndicator size="small" color={colors.primary} />
+					</View>
+				) : doc.status === "success" ? (
+					<View style={styles.statusContainer}>
+						<Feather name="check-circle" size={20} color={colors.primary} />
+					</View>
+				) : doc.status === "failed" ? (
+					<View style={styles.statusContainer}>
+						<Text style={styles.failedText}>Failed</Text>
+					</View>
+				) : (
+					<TouchableOpacity style={styles.removeCardButton} onPress={() => onRemove(index)}>
+						<Feather name="x" size={18} color={colors.printRequest} />
+					</TouchableOpacity>
+				)}
 			</View>
-			{doc.status === "uploading" ? (
-				<View style={styles.statusContainer}>
-					<ActivityIndicator size="small" color={colors.primary} />
-				</View>
-			) : doc.status === "success" ? (
-				<View style={styles.statusContainer}>
-					<Feather name="check-circle" size={20} color={colors.primary} />
-				</View>
-			) : doc.status === "failed" ? (
-				<View style={styles.statusContainer}>
-					<Text style={styles.failedText}>Failed</Text>
-				</View>
-			) : (
-				<TouchableOpacity style={styles.removeCardButton} onPress={() => onRemove(index)}>
-					<Feather name="x" size={18} color={colors.printRequest} />
-				</TouchableOpacity>
-			)}
-		</View>
 		</View >
 	);
 };

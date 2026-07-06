@@ -43,5 +43,6 @@ export const useDrafts = () => {
 		error,
 		refreshing,
 		refresh,
+		reload: loadDrafts,
 	};
 };
