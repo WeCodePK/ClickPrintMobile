@@ -36,6 +36,8 @@ export default {
 			"expo-router",
 			"expo-font",
 			"expo-web-browser",
+			// Push Notification 1 :: Added expo-notification to plugins in config
+			"expo-notifications",
 			[
 				"expo-splash-screen",
 				{
