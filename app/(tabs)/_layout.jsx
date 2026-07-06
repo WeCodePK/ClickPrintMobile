@@ -10,6 +10,9 @@ import { colors } from "../../constants/colors";
 export default function Layout() {
 	const insets = useSafeAreaInsets();
 
+
+	
+
 	return (
 		// main tab component and styling
 		<Tabs

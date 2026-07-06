@@ -120,6 +120,7 @@ const DraftDetails = () => {
 			});
 			const data = await response.json();
 			if (response.ok) {
+				
 				console.log("Draft submitted successfully:", data);
 				Alert.alert("Success", "Your print job has been submitted!", [
 					{

@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../constants/colors";
+import { useAuth } from "../../context/auth";
+
 
 
 // ----------------------------------- COMPONENTS -----------------------------------//
@@ -34,6 +36,8 @@ const Profile = () => {
 	const router = useRouter();
 	const navigation = useNavigation();
 
+	const { signOut } = useAuth();
+
 	const loadProfileData = async () => {
 		try {
 			const name = (await SecureStore.getItemAsync("name")) ?? "John Doe";
@@ -58,15 +62,15 @@ const Profile = () => {
 		return unsubscribe;
 	}, [navigation]);
 
-	
 
-    const handleContactSupport = async () => {
+
+	const handleContactSupport = async () => {
 		const email = "sohailkhankmu@gmail.com";
 		const url = `mailto:${email}? subject=ClickPrint%20Support`;
-		try{
+		try {
 			await Linking.openURL(url);
 
-		}catch (error){
+		} catch (error) {
 			console.error("Error openning mail app:", error);
 			Alert.alert("Contact Support", "Could not open your email application automatically. Please email us at: " + email);
 		};
@@ -84,9 +88,7 @@ const Profile = () => {
 				onPress: async () => {
 					try {
 						console.log("Logout pressed");
-						await SecureStore.deleteItemAsync("authToken");
-						await SecureStore.deleteItemAsync("name");
-						await SecureStore.deleteItemAsync("avatarUri");
+						await signOut();
 						router.replace("/");
 					} catch (error) {
 						console.error("Error during logout, maybe issue with deleting token:", error);
@@ -105,68 +107,68 @@ const Profile = () => {
 
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 				<View style={styles.sectionsContainer}>
-				{/* Profile Sections */}
-				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Account</Text>
+					{/* Profile Sections */}
+					<View style={styles.section}>
+						<Text style={styles.sectionTitle}>Account</Text>
 
-					{/* Profile Header */}
-					<AnimatedMenuItem
-						style={styles.menuItem}
-						onPress={() => router.push("/edit-profile")}
-					>
-						<View style={styles.menuItemLeft}>
-							<Feather name="user" size={20} color={colors.textPrimary} />
-							<Text style={styles.userName} numberOfLines={1}>{userName}</Text>
-						</View>
-						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</AnimatedMenuItem>
+						{/* Profile Header */}
+						<AnimatedMenuItem
+							style={styles.menuItem}
+							onPress={() => router.push("/edit-profile")}
+						>
+							<View style={styles.menuItemLeft}>
+								<Feather name="user" size={20} color={colors.textPrimary} />
+								<Text style={styles.userName} numberOfLines={1}>{userName}</Text>
+							</View>
+							<Feather name="chevron-right" size={20} color={colors.textSecondary} />
+						</AnimatedMenuItem>
 
-				</View>
+					</View>
 
-				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Settings</Text>
+					<View style={styles.section}>
+						<Text style={styles.sectionTitle}>Settings</Text>
 
-					<AnimatedMenuItem
-						style={styles.menuItem}
-						onPress={() => {
-							Alert.alert("Funtionality to be added soon!");
-						}}
-					>
-						<View style={styles.menuItemLeft}>
-							<Feather name="bell" size={20} color={colors.textPrimary} />
-							<Text style={styles.menuItemText}>Notifications</Text>
-						</View>
-						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</AnimatedMenuItem>
-				</View>
+						<AnimatedMenuItem
+							style={styles.menuItem}
+							onPress={() => {
+								Alert.alert("Funtionality to be added soon!");
+							}}
+						>
+							<View style={styles.menuItemLeft}>
+								<Feather name="bell" size={20} color={colors.textPrimary} />
+								<Text style={styles.menuItemText}>Notifications</Text>
+							</View>
+							<Feather name="chevron-right" size={20} color={colors.textSecondary} />
+						</AnimatedMenuItem>
+					</View>
 
-				<View style={styles.section}>
-					<Text style={styles.sectionTitle}>Help</Text>
+					<View style={styles.section}>
+						<Text style={styles.sectionTitle}>Help</Text>
 
-					<AnimatedMenuItem
-						style={styles.menuItem}
-						onPress={() => {
-							router.push("/about");
-						}}
-					>
-						<View style={styles.menuItemLeft}>
-							<Feather name="help-circle" size={20} color={colors.textPrimary} />
-							<Text style={styles.menuItemText}>About</Text>
-						</View>
-						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</AnimatedMenuItem>
+						<AnimatedMenuItem
+							style={styles.menuItem}
+							onPress={() => {
+								router.push("/about");
+							}}
+						>
+							<View style={styles.menuItemLeft}>
+								<Feather name="help-circle" size={20} color={colors.textPrimary} />
+								<Text style={styles.menuItemText}>About</Text>
+							</View>
+							<Feather name="chevron-right" size={20} color={colors.textSecondary} />
+						</AnimatedMenuItem>
 
-					<AnimatedMenuItem
-						style={styles.menuItem}
-						onPress={handleContactSupport}
-					>
-						<View style={styles.menuItemLeft}>
-							<Feather name="mail" size={20} color={colors.textPrimary} />
-							<Text style={styles.menuItemText}>Contact Support</Text>
-						</View>
-						<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-					</AnimatedMenuItem>
-				</View>
+						<AnimatedMenuItem
+							style={styles.menuItem}
+							onPress={handleContactSupport}
+						>
+							<View style={styles.menuItemLeft}>
+								<Feather name="mail" size={20} color={colors.textPrimary} />
+								<Text style={styles.menuItemText}>Contact Support</Text>
+							</View>
+							<Feather name="chevron-right" size={20} color={colors.textSecondary} />
+						</AnimatedMenuItem>
+					</View>
 
 				</View>
 

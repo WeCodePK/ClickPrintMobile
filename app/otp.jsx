@@ -8,6 +8,7 @@ import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, Touchable
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { useAuth } from "../context/auth"
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -27,6 +28,8 @@ const VerifyCode = () => {
 	const [verifying, setVerifying] = useState(false);
 	const [resending, setResending] = useState(false);
 	const inputRefs = useRef([]);
+
+	const { signIn } = useAuth();
 
 	useEffect(() => {
 		if (timer > 0) {
@@ -85,7 +88,7 @@ const VerifyCode = () => {
 			const body = await response.json();
 			if (body.success) {
 				console.log(body);
-				await SecureStore.setItemAsync("authToken", body.data.token);
+				await signIn(body.data.token)
 				console.log("OTP verified successfully for", phoneNumber);
 
 				if (fromEditProfile) {

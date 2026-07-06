@@ -22,36 +22,6 @@ const Login = () => {
 	const [phone, setPhone] = useState("");
 	const [loading, setLoading] = useState(false);
 
-	useEffect(() => {
-
-		(async () => {
-			SplashScreen.preventAutoHideAsync();
-			try {
-				const token = await SecureStore.getItemAsync("authToken");
-				if (token) {
-					const response = await fetch(`${API_BASE_URL}/profile`, {
-						headers: { Authorization: `Bearer ${token}` },
-					});
-					if (response.ok) {
-						const data = await response.json();
-						if (data.data?.profile?.name) {
-							await SecureStore.setItemAsync("name", data.data.profile.name);
-						}
-						router.replace("(tabs)/home");
-						return;
-					}
-					await SecureStore.deleteItemAsync("authToken");
-					await SecureStore.deleteItemAsync("name");
-				}
-			} catch (error) {
-				console.log("Error validating token:", error);
-			} finally {
-
-				await SplashScreen.hideAsync();
-			}
-		})();
-	}, [router]);
-
 	const sanitizePhone = (raw) => {
 		const digitsOnly = raw.replace(/[^0-9]/g, "");
 		return digitsOnly.replace(/^0/, "");

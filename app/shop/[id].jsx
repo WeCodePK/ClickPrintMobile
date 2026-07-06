@@ -56,8 +56,8 @@ const ShopDetails = () => {
 			}
 
 			const data = await response.json();
-			console.log("Shop details:", data);
-			setShop(data.data);
+			console.log("Shop details:", data);			
+			setShop(data.data.shop);
 		} catch (err) {
 			console.error("Error fetching shop details:", err);
 			setError(err.message || "Failed to load shop details. Please try again.");

@@ -1,19 +1,31 @@
-//----------------------------------- IMPORTS -----------------------------------//
+import * as SplashScreen from "expo-splash-screen";
+import { Slot, useRouter, useSegments } from "expo-router";
+import { useEffect } from "react";
+import { AuthProvider, useAuth } from "../context/auth";
 
-import { Stack } from "expo-router";
+SplashScreen.preventAutoHideAsync();
 
+function RootNavigation() {
+  const { authState } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
 
+  useEffect(() => {
+    if (authState === "checking") return;
+    const inTabs = segments[0] === "(tabs)";
+    if (authState === "guest" && inTabs) router.replace("/");
+    if (authState === "authed" && !inTabs) router.replace("/(tabs)/home");
+    SplashScreen.hideAsync();
+  }, [authState, segments]);
 
-
-//----------------------------------- COMPONENTS -----------------------------------//
+  if (authState === "checking") return null;
+  return <Slot />;
+}
 
 export default function RootLayout() {
-	return (
-		<Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
-			<Stack.Screen name="(tabs)" options={{ animation: "none" }} />
-			<Stack.Screen name="index" options={{ animation: "none" }} />
-			<Stack.Screen name="otp" options={{ animation: "none" }} />
-			<Stack.Screen name="profile-setup" options={{ animation: "none" }} />
-		</Stack>
-	);
+  return (
+    <AuthProvider>
+      <RootNavigation />
+    </AuthProvider>
+  );
 }

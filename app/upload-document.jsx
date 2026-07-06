@@ -89,7 +89,7 @@ const UploadDocument = () => {
 					type: doc.file.mimeType,
 				});
 				const fileId = await uploadDocument(formData, doc.file.name, token);
-				
+
 				if (fileId) {
 					documentArray.push({ fileId, name: doc.name || doc.file.name });
 					setDocuments((prev) => {
@@ -246,7 +246,15 @@ const UploadDocument = () => {
 					{uploading ? (
 						<ActivityIndicator color={colors.activityIndicator} />
 					) : (
-						<Text style={styles.continueButtonText}>Upload</Text>
+						<Text
+							style={
+								!hasDocuments || !allNamesValid || uploading
+									? { color: "darkgrey" }
+									: styles.continueButtonText
+							}
+						>
+							Upload
+						</Text>
 					)}
 				</TouchableOpacity>
 
@@ -408,7 +416,7 @@ const styles = StyleSheet.create({
 	continueButtonText: {
 		fontSize: 16,
 		fontWeight: "700",
-		color: "#000000ff",
+		color: "#f4efefff",
 	},
 });
 

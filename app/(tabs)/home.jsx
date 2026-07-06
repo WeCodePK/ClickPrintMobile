@@ -12,6 +12,8 @@ import { useActiveJobs } from "../../hooks/useActiveJobs";
 import { useDrafts } from "../../hooks/useDrafts";
 import ActiveJobCard from "../components/ActiveJobCard";
 import DraftItem from "../components/DraftItem";
+import { useAuth } from "../../context/auth";
+
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -25,6 +27,7 @@ const HomePage = () => {
 	const { drafts, loading, error, refresh, refreshing } = useDrafts();
 	const { activeJobs, loading: loadingJobs, refresh: refreshJobs } = useActiveJobs();
 	const [accountBalance, setAccountBalance] = useState(0);
+	const { signOut } = useAuth();
 
 	useEffect(() => {
 		fetchBalance();
@@ -40,7 +43,7 @@ const HomePage = () => {
 
 	useEffect(() => {
 		if (error && error.includes("401")) {
-			SecureStore.deleteItemAsync("authToken").then(() => router.replace("/"));
+			signOut().then(() => router.replace("/"));
 		}
 	}, [error]);
 
@@ -78,9 +81,9 @@ const HomePage = () => {
 			fileId: f.file?._id || f.file,
 			name: f.file?.originalName || `File`
 		}));
-		
+
 		const hasMissingSettings = draft.files.some(f => !f.settings || Object.keys(f.settings).length === 0);
-		
+
 		if (hasMissingSettings) {
 			router.push({
 				pathname: "/print-settings",
