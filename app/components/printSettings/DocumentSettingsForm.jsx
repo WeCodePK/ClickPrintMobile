@@ -46,6 +46,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 	const [showPagesPerSheetDropdown, setShowPagesPerSheetDropdown] = useState(false);
 	const [showSidednessDropdown, setShowSidednessDropdown] = useState(false);
 	const [keyboardOffset, setKeyboardOffset] = useState(0);
+	const [footerHeight, setFooterHeight] = useState(140);
 	const insets = useSafeAreaInsets();
 
 	const scrollViewRef = useRef(null);
@@ -59,7 +60,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 		if (!ref?.current || !scrollViewRef.current) return;
 		ref.current.measure((x, y, width, height, pageX, pageY) => {
 			const windowHeight = Dimensions.get("window").height;
-			const visibleBottom = windowHeight - keyboardHeight - 110;
+			const visibleBottom = windowHeight - keyboardHeight - footerHeight;
 			const overflow = pageY + height - visibleBottom;
 			if (overflow > 0) {
 				scrollViewRef.current.scrollTo({ y: scrollOffsetRef.current + overflow, animated: true });
@@ -217,7 +218,7 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 			<ScrollView
 				ref={scrollViewRef}
 				style={styles.scrollView}
-				contentContainerStyle={[styles.scrollContent, { paddingBottom: 140 + keyboardOffset }]}
+				contentContainerStyle={[styles.scrollContent, { paddingBottom: footerHeight + 10 + keyboardOffset }]}
 				keyboardShouldPersistTaps="handled"
 				onScroll={(e) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
 				scrollEventThrottle={16}
@@ -448,7 +449,10 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 			</ScrollView>
 
 			{/* Footer Buttons */}
-			<View style={[styles.footer, { paddingBottom: insets.bottom + 20, bottom: keyboardOffset }]}>
+			<View
+				style={[styles.footer, { paddingBottom: insets.bottom, bottom: keyboardOffset }]}
+				onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
+			>
 				{/* First doc with multiple docs: "Submit All" + "Move on" */}
 				{!isSingleDoc && isFirstDoc && (
 					<>
@@ -524,7 +528,6 @@ const styles = StyleSheet.create({
 	},
 	scrollContent: {
 		padding: 20,
-		paddingBottom: 140,
 	},
 	documentCard: {
 		flexDirection: "row",
