@@ -130,9 +130,7 @@ const Profile = () => {
 
 						<AnimatedMenuItem
 							style={styles.menuItem}
-							onPress={() => {
-								Alert.alert("Funtionality to be added soon!");
-							}}
+							onPress={() => router.push("/notifications")}
 						>
 							<View style={styles.menuItemLeft}>
 								<Feather name="bell" size={20} color={colors.textPrimary} />

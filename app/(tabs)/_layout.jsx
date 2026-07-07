@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../../constants/colors";
 import * as Notifications from 'expo-notifications';
-import { createAndroidNotificationChannel, registerForPushNotifications, sendPushTokenToBackend } from "../../services/notifications";
+import { createAndroidNotificationChannel, getNotificationsEnabledPref, registerForPushNotifications, sendPushTokenToBackend } from "../../services/notifications";
 
 //----------------------------------- FOREGROUND NOTIFICATION -----------------------------------//
 
@@ -27,6 +27,17 @@ export default function Layout() {
 	useEffect(() => {
 		(async () => {
 			await createAndroidNotificationChannel();
+
+			// Respect the in-app preference: if the user turned notifications off
+			// from the profile screen, don't prompt or register a token.
+			const enabled = await getNotificationsEnabledPref();
+			if (!enabled) {
+				console.log("Notifications disabled by user preference; skipping registration.");
+				return;
+			}
+
+			// Automatic path: prompts on first launch, then honours the 15-day
+			// cooldown before re-asking if the user previously declined.
 			const token = await registerForPushNotifications();
 			console.log(token ?? "Null token found!");
 
@@ -45,8 +56,8 @@ export default function Layout() {
 		});
 
 		return () => {
-			notificationListener.remove();
-			responseListener.remove();
+			notificationListener.current?.remove();
+			responseListener.current?.remove();
 		};
 	}, []);
 
