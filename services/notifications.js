@@ -112,24 +112,24 @@ export async function sendPushTokenToBackend(expoPushToken) {
         return;
     }
     console.log("I am being hit...!");
-    // try {
-    //     const response = await fetch(`${API_BASE_URL}/profile/pushTokens`, {
-    //         method: "POST",
-    //         headers: {
-    //             "Content-Type": "application/json",
-    //             Authorization: `Bearer ${authToken}`,
-    //         },
-    //         body: JSON.stringify({ expoPushToken }),
-    //     });
+    try {
+        const response = await fetch(`${API_BASE_URL}/profile/pushTokens`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({ expoPushToken }),
+        });
 
-    //     if (!response.ok) {
-    //         throw new Error(`HTTP error! status: ${response.status}`);
-    //     }
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
-    //     const data = await response.json();
-    //     console.log("Push token registered with backend:", data);
-    //     return data;
-    // } catch (e) {
-    //     console.log(`Failed to send push token to backend: ${e}`);
-    // }
+        const data = await response.json();
+        console.log("Push token registered with backend:", data);
+        return data;
+    } catch (e) {
+        console.log(`Failed to send push token to backend: ${e}`);
+    }
 }
