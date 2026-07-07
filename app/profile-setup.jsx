@@ -178,7 +178,7 @@ const ProfileSetup = () => {
 											value={userName}
 											onChangeText={handleInputChange}
 											editable={!loading}
-											maxLength={50}
+											maxLength={20}
 										/>
 									</View>
 								</Animated.View>
