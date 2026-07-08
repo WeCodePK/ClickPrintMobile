@@ -15,10 +15,6 @@ const API_BASE_URL = config.apiBaseUrl;
 
 //----------------------------------- HELPERS -----------------------------------//
 
-/**
- * Calculates a match score for a shop based on the user's print settings.
- * Higher score = better match = higher priority in the list.
- */
 const calculateShopScore = (shop, settingsArray) => {
 	if (!shop.capabilities || shop.capabilities.length === 0) return 0;
 
@@ -26,19 +22,12 @@ const calculateShopScore = (shop, settingsArray) => {
 	const caps = shop.capabilities.map((c) => c.toLowerCase());
 
 	for (const settings of settingsArray) {
-		// Color mode match
 		if (settings.color === "color" && caps.includes("color")) score += 3;
 		if (settings.color === "bw" && caps.includes("bw")) score += 3;
-
-		// Page type match
 		if (settings.pageType === "A4" && caps.includes("a4")) score += 2;
 		if (settings.pageType === "A3" && caps.includes("a3")) score += 2;
-
-		// Duplex match
 		if (settings.sidedness !== "none" && caps.includes("duplex")) score += 2;
 	}
-
-	// Bonus for being online
 	if (shop.isOnline) score += 5;
 
 	return score;
@@ -88,7 +77,7 @@ const ShopDetails = () => {
 			return;
 		}
 		fetchShops();
-	}, []);
+	}, [parsedDocuments.length, parsedSettings.length, router]);
 
 	const fetchShops = async () => {
 		try {
@@ -189,7 +178,7 @@ const ShopDetails = () => {
 			<View style={styles.searchContainer}>
 				<TextInput
 					style={styles.searchInput}
-					placeholder="Search shops..."
+					placeholder="🔎   Search shops..."
 					placeholderTextColor={colors.textSecondary}
 					value={searchQuery}
 					onChangeText={setSearchQuery}
@@ -197,7 +186,7 @@ const ShopDetails = () => {
 					clearButtonMode="while-editing"
 				/>
 				<View style={styles.onlineToggle}>
-					<Text style={styles.onlineToggleLabel}>online shops</Text>
+					<Text style={styles.onlineToggleLabel}>Online Shops</Text>
 					<Switch
 						value={onlineOnly}
 						onValueChange={setOnlineOnly}
