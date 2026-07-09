@@ -5,8 +5,9 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 
@@ -104,7 +105,7 @@ const Login = () => {
 
 	return (
 		<View style={{ flex: 1, backgroundColor: colors.background }}>
-			<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+			<DismissKeyboard>
 				<SafeAreaView style={[styles.container, { paddingBottom: keyboardOffset }]}>
 					<Text style={styles.heading}>Let&apos;s get started!</Text>
 					<Text style={styles.subHeading}>Please enter your mobile number</Text>
@@ -144,7 +145,7 @@ const Login = () => {
 						)}
 					</TouchableOpacity>
 				</SafeAreaView>
-			</TouchableWithoutFeedback>
+			</DismissKeyboard>
 		</View>
 	);
 };
@@ -204,6 +205,9 @@ const styles = StyleSheet.create({
 	input: {
 		fontSize: 16,
 		color: "#000",
+		// Remove the browser's default focus outline on web (renders as a
+		// rectangle inside the pill-shaped input). No-op on native.
+		...Platform.select({ web: { outlineStyle: "none" } }),
 	},
 	countryCodeText: {
 		color: "#000",

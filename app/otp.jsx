@@ -4,8 +4,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { ActivityIndicator, Alert, Keyboard, Modal, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { useAuth } from "../context/auth"
@@ -171,7 +172,7 @@ const VerifyCode = () => {
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
-		<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+		<DismissKeyboard>
 		<SafeAreaView style={styles.container}>
 			<TouchableOpacity style={styles.backButton} onPress={handleBack}>
 				<Ionicons name="arrow-back" size={24} />
@@ -242,7 +243,7 @@ const VerifyCode = () => {
 				</View>
 			</Modal>
 		</SafeAreaView>
-		</TouchableWithoutFeedback>
+		</DismissKeyboard>
 	);
 };
 
@@ -294,6 +295,7 @@ const styles = StyleSheet.create({
 	},
 	codeInput: {
 		flex: 1,
+		minWidth: 0,
 		height: 60,
 		borderBottomWidth: 2,
 		borderBottomColor: "#938b8b",
