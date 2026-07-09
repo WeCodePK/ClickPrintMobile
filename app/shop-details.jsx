@@ -2,9 +2,10 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { showAlert } from "../utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
@@ -72,7 +73,7 @@ const ShopDetails = () => {
 
 	useEffect(() => {
 		if (parsedDocuments.length === 0 || parsedSettings.length === 0) {
-			Alert.alert("Error", "Missing required information. Please go back.");
+			showAlert("Error", "Missing required information. Please go back.");
 			router.back();
 			return;
 		}
@@ -110,7 +111,7 @@ const ShopDetails = () => {
 
 	const handleContinue = async () => {
 		if (!selectedShop) {
-			Alert.alert("No Shop Selected", "Please select a print shop to continue.");
+			showAlert("No Shop Selected", "Please select a print shop to continue.");
 			return;
 		}
 
@@ -156,7 +157,7 @@ const ShopDetails = () => {
 		} catch (err) {
 			console.error("Error processing draft:", err);
 			setError(err.message);
-			Alert.alert("Error", err.message || "Failed to process draft. Please try again.");
+			showAlert("Error", err.message || "Failed to process draft. Please try again.");
 		} finally {
 			setSubmitting(false);
 		}

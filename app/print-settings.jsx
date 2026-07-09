@@ -2,9 +2,10 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import { useEffect, useState } from "react";
-import { Alert, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
@@ -44,7 +45,7 @@ const PrintSettings = () => {
 
 	useEffect(() => {
 		if (parsedDocuments.length === 0) {
-			Alert.alert("Error", "Missing required document information.");
+			showAlert("Error", "Missing required document information.");
 			router.back();
 		}
 	}, [router, parsedDocuments.length]);
@@ -80,12 +81,12 @@ const PrintSettings = () => {
 		for (let i = 0; i < settingsArray.length; i++) {
 			const s = settingsArray[i];
 			if (!s.color || !s.pageType || !s.orientation || !s.sidedness || !s.numberOfCopies) {
-				Alert.alert("Incomplete Settings", `Please complete all settings for document ${i + 1}.`);
+				showAlert("Incomplete Settings", `Please complete all settings for document ${i + 1}.`);
 				return;
 			}
 			const copies = parseInt(s.numberOfCopies);
 			if (isNaN(copies) || copies < 1) {
-				Alert.alert("Invalid Copies", `Number of copies for document ${i + 1} must be at least 1.`);
+				showAlert("Invalid Copies", `Number of copies for document ${i + 1} must be at least 1.`);
 				return;
 			}
 		}
@@ -132,7 +133,7 @@ const PrintSettings = () => {
 			});
 		} catch (err) {
 			console.error("Error updating draft with settings:", err);
-			Alert.alert("Error", err.message || "Failed to save settings. Please try again.");
+			showAlert("Error", err.message || "Failed to save settings. Please try again.");
 		}
 	};
 

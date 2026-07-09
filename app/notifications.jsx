@@ -3,7 +3,8 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, BackHandler, Linking, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, BackHandler, Linking, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/colors";
 import {
@@ -83,7 +84,7 @@ const NotificationsSettings = () => {
         setEnabled(false);
 
         if (!canAskAgain) {
-            Alert.alert(
+            showAlert(
                 "Notifications Disabled",
                 "Notifications are turned off for ClickPrint in your device settings. Please enable them from Settings.",
                 [
@@ -112,7 +113,7 @@ const NotificationsSettings = () => {
             }
         } catch (error) {
             console.error("Error toggling notifications:", error);
-            Alert.alert("Error", "Could not update your notification settings. Please try again.");
+            showAlert("Error", "Could not update your notification settings. Please try again.");
         } finally {
             setBusy(false);
         }

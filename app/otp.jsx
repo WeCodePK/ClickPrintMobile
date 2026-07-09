@@ -2,9 +2,10 @@
 
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
@@ -129,12 +130,12 @@ const VerifyCode = () => {
 				setTimer(30);
 				inputRefs.current[0]?.focus();
 			} else {
-				Alert.alert("Error", "Failed to send OTP. Please try again.");
+				showAlert("Error", "Failed to send OTP. Please try again.");
 				console.error("OTP request failed:", data.message);
 			}
 		} catch (error) {
 			console.error("Error sending OTP:", error);
-			Alert.alert("Error", "An unexpected error occurred. Please try again.");
+			showAlert("Error", "An unexpected error occurred. Please try again.");
 		} finally {
 			setResending(false);
 		}

@@ -7,7 +7,7 @@ import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/colors";
 import { useState, useEffect } from "react";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import config from "../config/config";
 
 //----------------------------------- CONSTANTS -----------------------------------//

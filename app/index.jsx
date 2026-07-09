@@ -3,7 +3,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
@@ -54,7 +55,7 @@ const Login = () => {
 
 	const handleContinue = async () => {
 		if (!isValidPhone) {
-			Alert.alert("Please enter a valid phone number.");
+			showAlert("Please enter a valid phone number.");
 			return;
 		}
 
@@ -71,7 +72,7 @@ const Login = () => {
 			});
 
 			if (!response.ok) {
-				Alert.alert("Error", "Failed to send OTP. Please try again.");
+				showAlert("Error", "Failed to send OTP. Please try again.");
 				console.error("OTP request failed with status:", response.status);
 				return;
 			}
@@ -81,16 +82,16 @@ const Login = () => {
 			if (data.success) {
 				router.replace({ pathname: "/otp", params: { phone: `92${phone}` } });
 			} else {
-				Alert.alert("Error", "Failed to send OTP. Please try again.");
+				showAlert("Error", "Failed to send OTP. Please try again.");
 				console.error("OTP request failed:", data.message);
 			}
 
 		} catch (error) {
 			console.error("Error sending OTP:", error);
 			if (error.message === "Network request failed") {
-				Alert.alert("No Internet", "Please check your internet connection and try again.");
+				showAlert("No Internet", "Please check your internet connection and try again.");
 			} else {
-				Alert.alert("Error", "An unexpected error occurred. Please try again.");
+				showAlert("Error", "An unexpected error occurred. Please try again.");
 			}
 		} finally {
 			setLoading(false);

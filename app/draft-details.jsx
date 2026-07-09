@@ -2,19 +2,19 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { showAlert } from "../utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import SecureStore from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
 const API_BASE_URL = config.apiBaseUrl;
 
 const SIDEDNESS_LABELS = {
-	single: "Single Sided",
 	none: "Single Sided",
 	long: "Double Sided (Long Edge)",
 	short: "Double Sided (Short Edge)",
@@ -26,7 +26,7 @@ const SETTING_LABELS = {
 	orientation: "Orientation",
 	pagesPerSheet: "Pages Per Sheet",
 	numberOfCopies: "Copies",
-	pageSelection: "Page Selection",
+	pageSelection: "Page Range",
 	sidedness: "Sidedness",
 };
 
@@ -36,6 +36,8 @@ const formatSettingValue = (key, value) => {
 			return value ? "Colored" : "Black & White";
 		case "sidedness":
 			return SIDEDNESS_LABELS[value] || value;
+		case "pageSelection":
+			return value ? value : "All pages";
 		case "orientation":
 			return String(value).charAt(0).toUpperCase() + String(value).slice(1);
 		default:
@@ -123,7 +125,7 @@ const DraftDetails = () => {
 			if (response.ok) {
 				
 				console.log("Draft submitted successfully:", data);
-				Alert.alert("Success", "Your print job has been submitted!", [
+				showAlert("Success", "Your print job has been submitted!", [
 					{
 						text: "OK",
 						onPress: () => router.replace("(tabs)/home"),
@@ -135,7 +137,7 @@ const DraftDetails = () => {
 			}
 		} catch (err) {
 			console.error("Error submitting draft:", err);
-			Alert.alert("Error", err.message || "Failed to submit draft. Please try again.");
+			showAlert("Error", err.message || "Failed to submit draft. Please try again.");
 		} finally {
 			setSubmitting(false);
 		}

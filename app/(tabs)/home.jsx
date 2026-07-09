@@ -2,9 +2,10 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../../utils/storage";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Dimensions, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Dimensions, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { showAlert } from "../../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../../config/config";
 import { colors } from "../../constants/colors";
@@ -28,24 +29,6 @@ const HomePage = () => {
 	const [accountBalance, setAccountBalance] = useState(0);
 	const { signOut } = useAuth();
 
-	useEffect(() => {
-		fetchBalance();
-	}, [fetchBalance]);
-
-	useFocusEffect(
-		useCallback(() => {
-			reload();
-			reloadJobs();
-			fetchBalance();
-		}, [reload, reloadJobs, fetchBalance])
-	);
-
-	useEffect(() => {
-		if (error && error.includes("401")) {
-			signOut().then(() => router.replace("/"));
-		}
-	}, [error, router, signOut]);
-
 	const fetchBalance = useCallback(async () => {
 		try {
 			const token = await SecureStore.getItemAsync("authToken");
@@ -68,6 +51,24 @@ const HomePage = () => {
 			console.error("Error fetching account balance:", error);
 		}
 	}, [router]);
+
+	useEffect(() => {
+		fetchBalance();
+	}, [fetchBalance]);
+
+	useFocusEffect(
+		useCallback(() => {
+			reload();
+			reloadJobs();
+			fetchBalance();
+		}, [reload, reloadJobs, fetchBalance])
+	);
+
+	useEffect(() => {
+		if (error && error.includes("401")) {
+			signOut().then(() => router.replace("/"));
+		}
+	}, [error, router, signOut]);
 
 	const refreshAll = () => {
 		refresh();
@@ -147,7 +148,7 @@ const HomePage = () => {
 							<TouchableOpacity
 								style={[styles.actionCard, styles.creditWalletCard]}
 								onPress={() => {
-									Alert.alert("Payment functionality to be added soon!");
+									showAlert("Payment functionality to be added soon!");
 								}}
 							>
 								<View style={styles.actionCardIcon}>

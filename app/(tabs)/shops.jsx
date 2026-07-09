@@ -2,24 +2,37 @@
 
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback } from "react";
-import { ActivityIndicator, Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useRouter } from "expo-router";
+import { useMemo, useState } from "react";
+import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { showAlert } from "../../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
+import ShopsMap from "../../components/ShopsMap";
 import { colors } from "../../constants/colors";
 import { useShops } from "../../hooks/useShops";
-import { toLatLng } from "../../utils/shopLocation";
+import { getInitialRegion, toLatLng } from "../../utils/shopLocation";
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
 const ShopsPage = () => {
 	const router = useRouter();
-	const { shops, loading, error, refresh, refreshing, reload } = useShops();
+	const { shops, loading, error, reload } = useShops();
+	const [selectedShopId, setSelectedShopId] = useState(null);
 
-	useFocusEffect(
-		useCallback(() => {
-			reload();
-		}, [reload])
+	// Only shops with usable coordinates can be placed on the map.
+	const locatedShops = useMemo(
+		() =>
+			shops
+				.map((shop) => ({ ...shop, latLng: toLatLng(shop.coordinates) }))
+				.filter((shop) => shop.latLng !== null),
+		[shops]
+	);
+
+	const initialRegion = useMemo(() => getInitialRegion(locatedShops), [locatedShops]);
+
+	const selectedShop = useMemo(
+		() => locatedShops.find((shop) => shop._id === selectedShopId) || null,
+		[locatedShops, selectedShopId]
 	);
 
 	const goToShopDetails = (shopId) => {
@@ -29,26 +42,19 @@ const ShopsPage = () => {
 	const openShopLocation = async (shop) => {
 		const latLng = toLatLng(shop.coordinates);
 		if (!latLng) {
-			Alert.alert("Location unavailable", "This shop hasn't set its location yet.");
+			showAlert("Location unavailable", "This shop hasn't set its location yet.");
 			return;
 		}
 		const url = `https://www.google.com/maps/search/?api=1&query=${latLng.latitude},${latLng.longitude}`;
 		try {
 			await Linking.openURL(url);
 		} catch {
-			Alert.alert("Unable to open maps", "Please try again.");
+			showAlert("Unable to open maps", "Please try again.");
 		}
 	};
 
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
-			<View style={styles.header}>
-				<Text style={styles.headerTitle}>Shops</Text>
-				<TouchableOpacity onPress={refresh} style={styles.refreshButton}>
-					{refreshing ? <ActivityIndicator size="small" color={colors.textPrimary} /> : <Feather name="refresh-cw" size={20} color={colors.textPrimary} />}
-				</TouchableOpacity>
-			</View>
-
 			{loading ? (
 				<View style={styles.centerContainer}>
 					<ActivityIndicator size="large" color={colors.primary} />
@@ -58,71 +64,96 @@ const ShopsPage = () => {
 				<View style={styles.centerContainer}>
 					<Feather name="alert-circle" size={40} color={colors.printRequest} />
 					<Text style={styles.errorText}>{error}</Text>
-					<TouchableOpacity style={styles.retryButton} onPress={refresh}>
+					<TouchableOpacity style={styles.retryButton} onPress={reload}>
 						<Text style={styles.retryButtonText}>Retry</Text>
 					</TouchableOpacity>
 				</View>
 			) : (
-				<ScrollView
-					style={styles.scrollView}
-					contentContainerStyle={styles.scrollContent}
-					refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-				>
-					{shops.length === 0 ? (
-						<View style={styles.centerContainer}>
-							<Feather name="shopping-bag" size={40} color={colors.textSecondary} />
-							<Text style={styles.errorText}>No shops available</Text>
+				<View style={styles.mapContainer}>
+					<ShopsMap
+						shops={locatedShops}
+						selectedShopId={selectedShopId}
+						initialRegion={initialRegion}
+						onSelectShop={setSelectedShopId}
+						onDeselect={() => setSelectedShopId(null)}
+					/>
+
+					{locatedShops.length === 0 && (
+						<View style={styles.emptyBanner} pointerEvents="none">
+							<Feather name="map-pin" size={18} color={colors.textSecondary} />
+							<Text style={styles.emptyBannerText}>No shops with a location yet</Text>
 						</View>
-					) : (
-						shops.map((shop) => (
-							<ShopListItem key={shop._id} shop={shop} onPress={() => goToShopDetails(shop._id)} onViewLocation={() => openShopLocation(shop)} />
-						))
 					)}
-				</ScrollView>
+
+					{selectedShop && (
+						<ShopCallout
+							shop={selectedShop}
+							onClose={() => setSelectedShopId(null)}
+							onMoreDetails={() => goToShopDetails(selectedShop._id)}
+							onDirections={() => openShopLocation(selectedShop)}
+						/>
+					)}
+				</View>
 			)}
 		</SafeAreaView>
 	);
 };
 
-const ShopListItem = ({ shop, onPress, onViewLocation }) => {
+// Popup tooltip shown when a pin is tapped. Rendered as a bottom card overlay so the
+// interaction is identical on web (Leaflet) and native (react-native-maps), avoiding
+// the platform quirks of tappable buttons inside native map callouts.
+const ShopCallout = ({ shop, onClose, onMoreDetails, onDirections }) => {
 	return (
-		<TouchableOpacity style={styles.shopCard} onPress={onPress} activeOpacity={0.7}>
-			{shop.imageUrl ? (
-				<Image source={{ uri: shop.imageUrl }} style={styles.shopImage} contentFit="cover" transition={200} />
-			) : (
-				<View style={styles.shopIconContainer}>
-					<Feather name="shopping-bag" size={24} color={colors.printRequest} />
-				</View>
-			)}
+		<View style={styles.callout}>
+			<TouchableOpacity style={styles.calloutClose} onPress={onClose} hitSlop={8}>
+				<Feather name="x" size={18} color={colors.textSecondary} />
+			</TouchableOpacity>
 
-			<View style={styles.shopInfo}>
-				<Text style={styles.shopName} numberOfLines={1}>
-					{shop.name}
-				</Text>
-				<Text style={styles.shopAddress} numberOfLines={1}>
-					{shop.address}
-				</Text>
-				{shop.timings && shop.timings.length > 0 && (
-					<View style={styles.timingRow}>
-						<Feather name="clock" size={12} color={colors.textSecondary} />
-						<Text style={styles.timingText} numberOfLines={1}>
-							{shop.timings[0]}
-						</Text>
+			<View style={styles.calloutTop}>
+				{shop.imageUrl ? (
+					<Image source={{ uri: shop.imageUrl }} style={styles.calloutImage} contentFit="cover" transition={200} />
+				) : (
+					<View style={styles.calloutIcon}>
+						<Feather name="shopping-bag" size={22} color={colors.printRequest} />
 					</View>
 				)}
-				<View style={styles.shopMeta}>
-					<View style={[styles.statusDot, shop.isOnline ? styles.statusDotOnline : styles.statusDotOffline]} />
-					<Text style={[styles.statusText, shop.isOnline ? styles.statusTextOnline : styles.statusTextOffline]}>{shop.isOnline ? "Online" : "Offline"}</Text>
-				</View>
 
-				<TouchableOpacity style={styles.viewLocationButton} onPress={onViewLocation} activeOpacity={0.7}>
-					<Feather name="map-pin" size={15} color={colors.cardBackground} />
-					<Text style={styles.viewLocationText}>View Location</Text>
-				</TouchableOpacity>
+				<View style={styles.calloutInfo}>
+					<Text style={styles.calloutName} numberOfLines={1}>
+						{shop.name}
+					</Text>
+					<Text style={styles.calloutAddress} numberOfLines={2}>
+						{shop.address}
+					</Text>
+					<View style={styles.calloutMetaRow}>
+						<View style={[styles.statusDot, shop.isOnline ? styles.statusDotOnline : styles.statusDotOffline]} />
+						<Text style={[styles.statusText, shop.isOnline ? styles.statusTextOnline : styles.statusTextOffline]}>
+							{shop.isOnline ? "Online" : "Offline"}
+						</Text>
+						{shop.timings && shop.timings.length > 0 && (
+							<>
+								<Text style={styles.metaDivider}>•</Text>
+								<Feather name="clock" size={12} color={colors.textSecondary} />
+								<Text style={styles.calloutTiming} numberOfLines={1}>
+									{shop.timings[0]}
+								</Text>
+							</>
+						)}
+					</View>
+				</View>
 			</View>
 
-			<Feather name="chevron-right" size={20} color={colors.textSecondary} />
-		</TouchableOpacity>
+			<View style={styles.calloutActions}>
+				<TouchableOpacity style={styles.directionsButton} onPress={onDirections} activeOpacity={0.8}>
+					<Feather name="navigation" size={15} color={colors.printRequest} />
+					<Text style={styles.directionsButtonText}>Directions</Text>
+				</TouchableOpacity>
+				<TouchableOpacity style={styles.detailsButton} onPress={onMoreDetails} activeOpacity={0.8}>
+					<Text style={styles.detailsButtonText}>More Details</Text>
+					<Feather name="arrow-right" size={16} color={colors.cardBackground} />
+				</TouchableOpacity>
+			</View>
+		</View>
 	);
 };
 
@@ -133,33 +164,9 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: colors.background,
 	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingHorizontal: 20,
-		paddingVertical: 16,
-		backgroundColor: colors.cardBackground,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
-	},
-	headerTitle: {
-		fontSize: 18,
-		fontWeight: "700",
-		color: colors.textPrimary,
-	},
-	refreshButton: {
-		width: 36,
-		height: 36,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	scrollView: {
+	mapContainer: {
 		flex: 1,
-	},
-	scrollContent: {
-		padding: 20,
-		gap: 12,
+		overflow: "hidden",
 	},
 	centerContainer: {
 		flex: 1,
@@ -189,65 +196,101 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 		color: colors.cardBackground,
 	},
-	shopCard: {
+	emptyBanner: {
+		position: "absolute",
+		top: 16,
+		alignSelf: "center",
 		flexDirection: "row",
 		alignItems: "center",
+		gap: 8,
 		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		padding: 14,
-		marginBottom: 12,
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+		borderRadius: 20,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
+		shadowColor: colors.shadowMedium,
 		shadowOffset: { width: 0, height: 2 },
 		shadowOpacity: 1,
 		shadowRadius: 8,
-		elevation: 2,
+		elevation: 3,
 	},
-	shopImage: {
+	emptyBannerText: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: colors.textSecondary,
+	},
+	callout: {
+		position: "absolute",
+		left: 16,
+		right: 16,
+		bottom: 20,
+		backgroundColor: colors.cardBackground,
+		borderRadius: 18,
+		padding: 16,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+		shadowColor: colors.shadowMedium,
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 1,
+		shadowRadius: 16,
+		elevation: 8,
+	},
+	calloutClose: {
+		position: "absolute",
+		top: 10,
+		right: 10,
+		width: 28,
+		height: 28,
+		borderRadius: 14,
+		justifyContent: "center",
+		alignItems: "center",
+		backgroundColor: colors.background,
+		zIndex: 1,
+	},
+	calloutTop: {
+		flexDirection: "row",
+		gap: 14,
+		paddingRight: 24,
+	},
+	calloutImage: {
 		width: 56,
 		height: 56,
 		borderRadius: 12,
-		marginRight: 14,
 		backgroundColor: colors.background,
 	},
-	shopIconContainer: {
+	calloutIcon: {
 		width: 56,
 		height: 56,
 		borderRadius: 12,
 		backgroundColor: "#FFE8E5",
 		justifyContent: "center",
 		alignItems: "center",
-		marginRight: 14,
 	},
-	shopInfo: {
+	calloutInfo: {
 		flex: 1,
 		gap: 4,
 	},
-	shopName: {
+	calloutName: {
 		fontSize: 16,
 		fontWeight: "700",
 		color: colors.textPrimary,
 	},
-	shopAddress: {
+	calloutAddress: {
 		fontSize: 13,
 		color: colors.textSecondary,
+		lineHeight: 18,
 	},
-	timingRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-	},
-	timingText: {
-		fontSize: 12,
-		color: colors.textSecondary,
-		flexShrink: 1,
-	},
-	shopMeta: {
+	calloutMetaRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 6,
 		marginTop: 2,
+		flexWrap: "wrap",
+	},
+	metaDivider: {
+		fontSize: 12,
+		color: colors.textSecondary,
 	},
 	statusDot: {
 		width: 7,
@@ -270,24 +313,46 @@ const styles = StyleSheet.create({
 	statusTextOffline: {
 		color: colors.textSecondary,
 	},
-	viewLocationButton: {
-		backgroundColor: colors.printRequest,
+	calloutTiming: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		flexShrink: 1,
+	},
+	calloutActions: {
+		flexDirection: "row",
+		gap: 10,
+		marginTop: 16,
+	},
+	directionsButton: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		alignSelf: "flex-start",   
-		paddingVertical: 8,
-		paddingHorizontal: 10, 
-		marginTop: 5,    
-		borderRadius: 15,
-		gap: 4,                    
-		minWidth: 200,
+		gap: 6,
+		paddingVertical: 11,
+		paddingHorizontal: 14,
+		borderRadius: 12,
+		borderWidth: 1.5,
+		borderColor: colors.printRequest,
 	},
-	viewLocationText: {
-		fontSize: 12,
+	directionsButtonText: {
+		fontSize: 14,
 		fontWeight: "600",
+		color: colors.printRequest,
+	},
+	detailsButton: {
+		flex: 1,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 6,
+		paddingVertical: 11,
+		borderRadius: 12,
+		backgroundColor: colors.printRequest,
+	},
+	detailsButtonText: {
+		fontSize: 14,
+		fontWeight: "700",
 		color: colors.cardBackground,
-		textAlign: "center",
 	},
 });
 

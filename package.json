@@ -3,9 +3,9 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "web": "expo start --web --port 8081",
+    "expo": "expo start",
     "tunnel": "dotenv -- cloudflared tunnel --no-autoupdate --loglevel error run",
-    "start": "concurrently -k -n expo,tunnel -c blue,orange \"npm:web\" \"npm:tunnel\""
+    "start": "concurrently -k -n expo,tunnel -c blue,orange \"npm:expo\" \"npm:tunnel\""
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -2,10 +2,11 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useNavigation } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../../utils/storage";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
+import { Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { showAlert } from "../../utils/alert";
 import { colors } from "../../constants/colors";
 import { useAuth } from "../../context/auth";
 
@@ -72,29 +73,31 @@ const Profile = () => {
 
 		} catch (error) {
 			console.error("Error openning mail app:", error);
-			Alert.alert("Contact Support", "Could not open your email application automatically. Please email us at: " + email);
+			showAlert("Contact Support", "Could not open your email application automatically. Please email us at: " + email);
 		};
 
 	};
 
+	const performLogout = async () => {
+		try {
+			console.log("Logout pressed");
+			await signOut();
+			router.replace("/");
+		} catch (error) {
+			console.error("Error during logout, maybe issue with deleting token:", error);
+			showAlert("Error", "An error occurred while logging out. Please try again.");
+		}
+	};
+
 	const handleLogout = () => {
-		Alert.alert("Logout", "Are you sure you want to logout?", [
+		showAlert("Logout", "Are you sure you want to logout?", [
 			{
 				text: "Cancel",
 				style: "cancel",
 			},
 			{
 				text: "Logout",
-				onPress: async () => {
-					try {
-						console.log("Logout pressed");
-						await signOut();
-						router.replace("/");
-					} catch (error) {
-						console.error("Error during logout, maybe issue with deleting token:", error);
-						Alert.alert("Error", "An error occurred while logging out. Please try again.");
-					}
-				},
+				onPress: performLogout,
 			},
 		]);
 	};

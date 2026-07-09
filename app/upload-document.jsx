@@ -3,9 +3,9 @@
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import { useState } from "react";
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
@@ -83,11 +83,24 @@ const UploadDocument = () => {
 				});
 
 				const formData = new FormData();
-				formData.append("file", {
-					uri: doc.file.uri,
-					name: doc.file.name,
-					type: doc.file.mimeType,
-				});
+				if (Platform.OS === "web") {
+					// On web, FormData needs a real Blob/File. Appending the RN
+					// { uri, name, type } object would serialize to "[object Object]".
+					// expo-document-picker exposes the browser File on `.file`; fall
+					// back to fetching the blob: URL if it isn't present.
+					let filePart = doc.file.file;
+					if (!filePart) {
+						const res = await fetch(doc.file.uri);
+						filePart = await res.blob();
+					}
+					formData.append("file", filePart, doc.file.name);
+				} else {
+					formData.append("file", {
+						uri: doc.file.uri,
+						name: doc.file.name,
+						type: doc.file.mimeType,
+					});
+				}
 				const fileId = await uploadDocument(formData, doc.file.name, token);
 
 				if (fileId) {

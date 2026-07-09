@@ -1,10 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
-    Alert,
     BackHandler,
     ScrollView,
     StatusBar,
@@ -14,6 +13,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
@@ -67,7 +67,7 @@ const EditProfile = () => {
         const trimmedName = name.trim();
 
         if (trimmedName === originalName.trim()) {
-            Alert.alert(
+            showAlert(
                 "No Changes",
                 "New name cannot be the same as your current name."
             );
@@ -75,7 +75,7 @@ const EditProfile = () => {
         }
 
         if (!/^[A-Za-z\s]+$/.test(trimmedName)) {
-            Alert.alert(
+            showAlert(
                 "Invalid Name",
                 "Only letters and spaces are allowed."
             );
@@ -83,7 +83,7 @@ const EditProfile = () => {
         }
 
         if (/\s{2,}/.test(trimmedName)) {
-            Alert.alert(
+            showAlert(
                 "Invalid Name",
                 "Name cannot contain multiple consecutive spaces."
             );
@@ -112,14 +112,14 @@ const EditProfile = () => {
                 await SecureStore.setItemAsync("name", trimmedName);
                 router.replace("/(tabs)/profile");
             } else {
-                Alert.alert(
+                showAlert(
                     "Error",
                     data.message ||
                     "Failed to update name. Please try again."
                 );
             }
         } catch (error) {
-            Alert.alert(
+            showAlert(
                 "Connection Error",
                 "Please check your internet connection."
             );

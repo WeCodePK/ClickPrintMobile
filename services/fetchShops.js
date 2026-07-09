@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import config from "../config/config";
 
 const API_BASE_URL = config.apiBaseUrl;

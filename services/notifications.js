@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import Constants from "expo-constants";
 import config from "../config/config";
 

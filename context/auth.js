@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import { createContext, useContext, useEffect, useState } from "react";
 import config from "../config/config"
 

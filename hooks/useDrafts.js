@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../utils/storage";
 import { useCallback, useEffect, useState } from "react";
 import { fetchDrafts } from "../services/fetchDrafts";
 

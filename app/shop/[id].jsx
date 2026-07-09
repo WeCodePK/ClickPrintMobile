@@ -2,7 +2,7 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../../utils/storage";
 import { Image } from "expo-image";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";

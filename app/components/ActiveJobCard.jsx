@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors } from "../../constants/colors";
 import { useState, useEffect } from "react";
-import * as SecureStore from "expo-secure-store";
+import SecureStore from "../../utils/storage";
 import config from "../../config/config";
 
 const STATUS_CONFIG = {
