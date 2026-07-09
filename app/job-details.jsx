@@ -3,7 +3,8 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import showAlert from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../constants/colors";
 import { useState, useEffect } from "react";
@@ -60,14 +61,61 @@ const TransactionDetails = () => {
 	const params = useLocalSearchParams();
 	const transaction = JSON.parse(params.transaction);
 
-	const statusConfig = STATUS_CONFIG[transaction.status] || {
-		label: transaction.status,
+	const [shopName, setShopName] = useState("Print Job");
+	const [shopImageUrl, setShopImageUrl] = useState(null);
+	const [cancelling, setCancelling] = useState(false);
+	const [jobStatus, setJobStatus] = useState(transaction.status);
+
+	const CANCELLABLE_STATUSES = ["submitted", "queued", "pending", "processing"];
+
+	const statusConfig = STATUS_CONFIG[jobStatus] || {
+		label: jobStatus,
 		color: colors.textSecondary,
 		bg: colors.background,
 	};
 
-	const [shopName, setShopName] = useState("Print Job");
-	const [shopImageUrl, setShopImageUrl] = useState(null);
+	const handleCancelJob = () => {
+		showAlert(
+			"Cancel Job",
+			"Are you sure you want to cancel this print job?",
+			[
+				{ text: "No", style: "cancel" },
+				{
+					text: "Yes, Cancel",
+					style: "destructive",
+					onPress: async () => {
+						try {
+							setCancelling(true);
+							const token = await SecureStore.getItemAsync("authToken");
+							const res = await fetch(
+								`${config.apiBaseUrl}/jobs/${transaction.id}/status`,
+								{
+									method: "PATCH",
+									headers: {
+										"Content-Type": "application/json",
+										Authorization: `Bearer ${token}`,
+									},
+									body: JSON.stringify({ status: "cancelled" }),
+								}
+							);
+							const data = await res.json();
+							if (res.ok && data.success !== false) {
+								setJobStatus("cancelled");
+								showAlert("Job Cancelled", "Your print job has been cancelled.");
+							} else {
+								showAlert("Error", data.message || "Failed to cancel the job.");
+							}
+						} catch (e) {
+							console.error("Error cancelling job:", e);
+							showAlert("Error", "Something went wrong. Please try again.");
+						} finally {
+							setCancelling(false);
+						}
+					},
+				},
+			]
+		);
+	};
 
 	useEffect(() => {
 		const fetchShopName = async () => {
@@ -171,7 +219,7 @@ const TransactionDetails = () => {
 					</View>
 					<Text style={styles.summaryDate}>{formatDateTime(transaction.timestamp)}</Text>
 
-					{renderProgressBar(transaction.status)}
+					{renderProgressBar(jobStatus)}
 				</View>
 
 				{/* Job Info */}
@@ -246,6 +294,25 @@ const TransactionDetails = () => {
 							})}
 						</View>
 					</View>
+				)}
+
+				{/* Cancel Job Button */}
+				{CANCELLABLE_STATUSES.includes(jobStatus) && (
+					<TouchableOpacity
+						style={[styles.cancelButton, cancelling && styles.cancelButtonDisabled]}
+						onPress={handleCancelJob}
+						disabled={cancelling}
+						activeOpacity={0.7}
+					>
+						{cancelling ? (
+							<ActivityIndicator size="small" color="#FFFFFF" />
+						) : (
+							<>
+								<Feather name="x-circle" size={18} color="#FFFFFF" />
+								<Text style={styles.cancelButtonText}>Cancel Job</Text>
+							</>
+						)}
+					</TouchableOpacity>
 				)}
 			</ScrollView>
 		</SafeAreaView>
@@ -529,6 +596,25 @@ const styles = StyleSheet.create({
 	timelineDate: {
 		fontSize: 12,
 		color: colors.textSecondary,
+	},
+	cancelButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		backgroundColor: colors.printRequest,
+		paddingVertical: 16,
+		borderRadius: 16,
+		marginTop: 8,
+		marginBottom: 20,
+	},
+	cancelButtonDisabled: {
+		opacity: 0.6,
+	},
+	cancelButtonText: {
+		color: "#FFFFFF",
+		fontSize: 16,
+		fontWeight: "700",
 	},
 });
 

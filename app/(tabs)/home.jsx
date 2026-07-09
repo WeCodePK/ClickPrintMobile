@@ -76,6 +76,39 @@ const HomePage = () => {
 		fetchBalance();
 	};
 
+	const handleDeleteDraft = useCallback((draftId) => {
+		showAlert(
+			"Delete Draft",
+			"Are you sure you want to delete this draft?",
+			[
+				{ text: "Cancel", style: "cancel" },
+				{
+					text: "Delete",
+					style: "destructive",
+					onPress: async () => {
+						try {
+							const token = await SecureStore.getItemAsync("authToken");
+							const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
+								method: "DELETE",
+								headers: {
+									Authorization: `Bearer ${token}`,
+								},
+							});
+							if (response.ok) {
+								reload();
+							} else {
+								showAlert("Failed to delete draft. Please try again.");
+							}
+						} catch (err) {
+							console.error("Error deleting draft:", err);
+							showAlert("Failed to delete draft. Please try again.");
+						}
+					},
+				},
+			]
+		);
+	}, [reload]);
+
 	const handleDraftPress = (draft) => {
 		const documents = draft.files.map(f => ({
 			fileId: f.file?._id || f.file,
@@ -185,10 +218,11 @@ const HomePage = () => {
 								<View style={styles.innerListContainer}>
 									{drafts.map((draft) => (
 										<DraftItem
-											key={draft._id}
-											draft={draft}
-											onPress={() => handleDraftPress(draft)}
-										/>
+										key={draft._id}
+										draft={draft}
+										onPress={() => handleDraftPress(draft)}
+										onDelete={handleDeleteDraft}
+									/>
 									))}
 								</View>
 							) : (
