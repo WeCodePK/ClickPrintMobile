@@ -25,6 +25,21 @@ if ('serviceWorker' in navigator) {
 }
 `;
 
+// Capture the install prompt as early as possible. The `beforeinstallprompt`
+// event can fire before React mounts, so we stash it on window and re-broadcast
+// a custom event the install screen can listen for.
+const installPromptCapture = `
+window.__bipEvent = null;
+window.addEventListener('beforeinstallprompt', function (e) {
+	e.preventDefault();
+	window.__bipEvent = e;
+	window.dispatchEvent(new Event('bip-ready'));
+});
+window.addEventListener('appinstalled', function () {
+	window.__bipEvent = null;
+});
+`;
+
 export default function Root({ children }) {
 	return (
 		<html lang="en">
@@ -70,6 +85,7 @@ export default function Root({ children }) {
 					}}
 				/>
 
+				<script dangerouslySetInnerHTML={{ __html: installPromptCapture }} />
 				<script dangerouslySetInnerHTML={{ __html: swRegistration }} />
 			</head>
 			<body>{children}</body>

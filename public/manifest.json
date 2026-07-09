@@ -7,6 +7,30 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F7F8FA",
+  "categories": ["productivity", "utilities"],
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile-1.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Order prints from nearby shops"
+    },
+    {
+      "src": "/screenshots/mobile-2.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Upload, choose a shop, pick up"
+    },
+    {
+      "src": "/screenshots/desktop-1.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "ClickPrint on the web"
+    }
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",

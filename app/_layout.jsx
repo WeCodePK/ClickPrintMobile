@@ -4,6 +4,7 @@ import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useRef } from "react";
 import { AuthProvider, useAuth } from "../context/auth";
 import { colors } from "../constants/colors";
+import WebInstallGate from "../components/WebInstallGate";
 
 SplashScreen.preventAutoHideAsync();
 SystemUI.setBackgroundColorAsync(colors.background);
@@ -31,8 +32,10 @@ function RootNavigation() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootNavigation />
-    </AuthProvider>
+    <WebInstallGate>
+      <AuthProvider>
+        <RootNavigation />
+      </AuthProvider>
+    </WebInstallGate>
   );
 }
