@@ -78,7 +78,7 @@ const ShopsMap = ({ shops, selectedShopId, initialRegion, onSelectShop, onDesele
 				leafletRef.current = L;
 				ensureLabelStyles();
 
-				const map = L.map(containerRef.current, { zoomControl: true, attributionControl: true }).setView(
+				const map = L.map(containerRef.current, { zoomControl: false, attributionControl: true }).setView(
 					[initialRegion.latitude, initialRegion.longitude],
 					13
 				);

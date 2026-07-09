@@ -52,7 +52,14 @@ const ShopMarker = ({ shop, selected, onSelect }) => {
 // taps are lifted up so the parent can drive the shared shop-detail card.
 const ShopsMap = ({ shops, selectedShopId, initialRegion, onSelectShop, onDeselect }) => {
 	return (
-		<MapView provider={PROVIDER_DEFAULT} mapType="none" style={StyleSheet.absoluteFill} initialRegion={initialRegion} onPress={onDeselect}>
+		<MapView
+			provider={PROVIDER_DEFAULT}
+			mapType="none"
+			zoomControlEnabled={false}
+			style={StyleSheet.absoluteFill}
+			initialRegion={initialRegion}
+			onPress={onDeselect}
+		>
 			<UrlTile urlTemplate={TILE_URL} maximumZ={20} flipY={false} shouldReplaceMapContent />
 			{shops.map((shop) => (
 				<ShopMarker key={shop._id} shop={shop} selected={shop._id === selectedShopId} onSelect={onSelectShop} />
