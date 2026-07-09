@@ -1,13 +1,12 @@
 {
-  "name": "Click Print",
-  "short_name": "Click Print",
+  "name": "ClickPrint",
+  "short_name": "ClickPrint",
   "description": "Order prints from nearby shops, right from your phone.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#ffffff",
-  "theme_color": "#FF4F00",
+  "background_color": "#F7F8FA",
   "icons": [
     {
       "src": "/icons/icon-192.png",

@@ -2,6 +2,12 @@
 // effect on native). Expo Router wraps every web page in this document.
 import { ScrollViewStyleReset } from "expo-router/html";
 
+// App's off-white background (constants/colors.js -> colors.background). Used
+// for the status bar (theme-color) and the Android nav bar (page background)
+// on an installed PWA. A light color makes Android render dark status-bar text
+// and dark nav buttons automatically.
+const APP_BACKGROUND = "#F7F8FA";
+
 // In production we register the caching worker (sw.js). In development we
 // register a no-op worker (sw-dev.js) that caches nothing — it exists only to
 // satisfy Android Chrome's installability check (a registered SW with a fetch
@@ -32,7 +38,11 @@ export default function Root({ children }) {
 
 				{/* PWA */}
 				<link rel="manifest" href="/manifest.json" />
-				<meta name="theme-color" content="#FF4F00" />
+				{/* Status bar color on an installed PWA. Light -> dark status-bar text. */}
+				<meta name="theme-color" content={APP_BACKGROUND} />
+				{/* Force light rendering so a dark-mode device doesn't darken the
+				    system nav bar or draw a dark seam under the status bar. */}
+				<meta name="color-scheme" content="light" />
 
 				{/* iOS home-screen / standalone support */}
 				<meta name="apple-mobile-web-app-capable" content="yes" />
@@ -49,6 +59,16 @@ export default function Root({ children }) {
 				  the same as on native. Remove if you want the default behavior.
 				*/}
 				<ScrollViewStyleReset />
+
+				{/*
+				  Set the document background so the Android system nav bar on an
+				  installed PWA matches the app (light bg -> dark nav buttons).
+				*/}
+				<style
+					dangerouslySetInnerHTML={{
+						__html: `:root { color-scheme: light; } html, body { margin: 0; background-color: ${APP_BACKGROUND}; }`,
+					}}
+				/>
 
 				<script dangerouslySetInnerHTML={{ __html: swRegistration }} />
 			</head>
