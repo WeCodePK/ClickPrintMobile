@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import ShopsMap from "../../components/ShopsMap";
@@ -19,6 +19,7 @@ const ShopsPage = () => {
 	const { shops, loading, error, reload } = useShops();
 	const [selectedShopId, setSelectedShopId] = useState(null);
 	const [viewMode, setViewMode] = useState("map"); // "map" | "list"
+	const [searchQuery, setSearchQuery] = useState("");
 
 	// Only shops with usable coordinates can be placed on the map.
 	const locatedShops = useMemo(
@@ -35,6 +36,13 @@ const ShopsPage = () => {
 		() => locatedShops.find((shop) => shop._id === selectedShopId) || null,
 		[locatedShops, selectedShopId]
 	);
+
+	// List view filtering by shop name or address.
+	const filteredShops = useMemo(() => {
+		const q = searchQuery.trim().toLowerCase();
+		if (!q) return shops;
+		return shops.filter((shop) => shop.name.toLowerCase().includes(q) || (shop.address || "").toLowerCase().includes(q));
+	}, [shops, searchQuery]);
 
 	const goToShopDetails = (shopId) => {
 		router.push(`/shop/${shopId}?from=shops`);
@@ -98,23 +106,50 @@ const ShopsPage = () => {
 							)}
 						</View>
 					) : (
-						<ScrollView style={styles.listView} contentContainerStyle={styles.listContent}>
-							{shops.length === 0 ? (
-								<View style={styles.centerContainer}>
-									<Feather name="shopping-bag" size={40} color={colors.textSecondary} />
-									<Text style={styles.errorText}>No shops available</Text>
-								</View>
-							) : (
-								shops.map((shop) => (
-									<ShopListItem
-										key={shop._id}
-										shop={shop}
-										onPress={() => goToShopDetails(shop._id)}
-										onViewLocation={() => openShopLocation(shop)}
+						<View style={styles.listView}>
+							<View style={styles.searchContainer}>
+								<View style={styles.searchBar}>
+									<Feather name="search" size={16} color={colors.textSecondary} />
+									<TextInput
+										style={styles.searchInput}
+										placeholder="Search shops..."
+										placeholderTextColor={colors.textSecondary}
+										value={searchQuery}
+										onChangeText={setSearchQuery}
+										returnKeyType="search"
+										autoCorrect={false}
 									/>
-								))
-							)}
-						</ScrollView>
+									{searchQuery.length > 0 && (
+										<TouchableOpacity onPress={() => setSearchQuery("")} hitSlop={8}>
+											<Feather name="x" size={16} color={colors.textSecondary} />
+										</TouchableOpacity>
+									)}
+								</View>
+							</View>
+
+							<ScrollView style={styles.listScroll} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
+								{shops.length === 0 ? (
+									<View style={styles.centerContainer}>
+										<Feather name="shopping-bag" size={40} color={colors.textSecondary} />
+										<Text style={styles.errorText}>No shops available</Text>
+									</View>
+								) : filteredShops.length === 0 ? (
+									<View style={styles.centerContainer}>
+										<Feather name="search" size={40} color={colors.textSecondary} />
+										<Text style={styles.errorText}>No shops match &quot;{searchQuery}&quot;</Text>
+									</View>
+								) : (
+									filteredShops.map((shop) => (
+										<ShopListItem
+											key={shop._id}
+											shop={shop}
+											onPress={() => goToShopDetails(shop._id)}
+											onViewLocation={() => openShopLocation(shop)}
+										/>
+									))
+								)}
+							</ScrollView>
+						</View>
 					)}
 
 					<ViewToggle mode={viewMode} onChange={setViewMode} />
@@ -268,9 +303,37 @@ const styles = StyleSheet.create({
 	listView: {
 		flex: 1,
 	},
+	searchContainer: {
+		paddingTop: 64,
+		paddingHorizontal: 16,
+		paddingBottom: 12,
+		backgroundColor: colors.background,
+	},
+	searchBar: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		height: 44,
+		paddingHorizontal: 12,
+		backgroundColor: colors.cardBackground,
+		borderRadius: 12,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+	},
+	searchInput: {
+		flex: 1,
+		fontSize: 15,
+		color: colors.textPrimary,
+		paddingVertical: 0,
+		// Removes the browser's default focus outline on web (no-op on native).
+		...Platform.select({ web: { outlineStyle: "none" } }),
+	},
+	listScroll: {
+		flex: 1,
+	},
 	listContent: {
 		padding: 16,
-		paddingTop: 72,
+		paddingTop: 4,
 		gap: 12,
 	},
 	viewToggle: {
