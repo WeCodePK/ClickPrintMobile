@@ -26,6 +26,24 @@ const Login = () => {
 	const [keyboardOffset, setKeyboardOffset] = useState(0);
 
 	useEffect(() => {
+		if (Platform.OS === "web") {
+			const viewport = typeof window !== "undefined" ? window.visualViewport : null;
+			if (!viewport) return;
+
+			const handleViewportChange = () => {
+				const offset = window.innerHeight - viewport.height - viewport.offsetTop;
+				setKeyboardOffset(offset > 0 ? offset + KEYBOARD_EXTRA_OFFSET : 0);
+			};
+
+			viewport.addEventListener("resize", handleViewportChange);
+			viewport.addEventListener("scroll", handleViewportChange);
+
+			return () => {
+				viewport.removeEventListener("resize", handleViewportChange);
+				viewport.removeEventListener("scroll", handleViewportChange);
+			};
+		}
+
 		const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
 		const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 

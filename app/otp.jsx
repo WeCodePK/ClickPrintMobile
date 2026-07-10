@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import SecureStore from "../utils/storage";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { ActivityIndicator, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
@@ -305,6 +305,9 @@ const styles = StyleSheet.create({
 		color: colors.textPrimary,
 		fontWeight: "600",
 		paddingVertical: 10,
+		// Remove the browser's default focus outline on web (renders as a
+		// solid rectangle around the input). No-op on native.
+		...Platform.select({ web: { outlineStyle: "none" } }),
 	},
 
 
