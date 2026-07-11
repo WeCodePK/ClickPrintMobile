@@ -9,7 +9,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import SecureStore from "../utils/storage";
-import { documentsFromDraft, settingsArrayFromDraft } from "../utils/draft";
+import { documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -120,7 +120,7 @@ const DraftDetails = () => {
 				params: {
 					draftId: draft._id,
 					documents: JSON.stringify(documentsFromDraft(draft)),
-					allSettings: JSON.stringify(settingsArrayFromDraft(draft)),
+					allSettings: JSON.stringify(segmentsArrayFromDraft(draft)),
 				},
 			});
 		} else {

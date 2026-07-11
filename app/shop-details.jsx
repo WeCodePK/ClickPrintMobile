@@ -10,7 +10,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { fetchDraft } from "../services/fetchDraft";
-import { documentsFromDraft, settingsArrayFromDraft } from "../utils/draft";
+import { documentsFromDraft, segmentsArrayFromDraft, flattenSegments } from "../utils/draft";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -71,10 +71,12 @@ const ShopDetails = () => {
 		}
 	});
 
-	// Sort shops by match score then filter by search
+	// Score against every segment independently (a split file contributes each of
+	// its page-range settings), so flatten the per-document segment arrays first.
+	const flatSettings = flattenSegments(parsedSettings);
 	const sortedShops = [...shops].sort((a, b) => {
-		const scoreA = calculateShopScore(a, parsedSettings);
-		const scoreB = calculateShopScore(b, parsedSettings);
+		const scoreA = calculateShopScore(a, flatSettings);
+		const scoreB = calculateShopScore(b, flatSettings);
 		return scoreB - scoreA;
 	});
 
@@ -101,7 +103,7 @@ const ShopDetails = () => {
 			const docs = documentsFromDraft(draft);
 			if (docs.length > 0) {
 				setParsedDocuments(docs);
-				setParsedSettings(settingsArrayFromDraft(draft));
+				setParsedSettings(segmentsArrayFromDraft(draft));
 			}
 			const shopId = draft.shop?._id || (typeof draft.shop === "string" ? draft.shop : null);
 			if (shopId) setSelectedShop(shopId);

@@ -1,8 +1,14 @@
 // Helpers for converting a backend draft into the shapes the print-flow
 // screens use, and back. Kept in one place so upload-document, print-settings,
 // shop-details and draft-details all hydrate a resumed draft identically.
+//
+// A single uploaded file can be split into several "segments", each covering a
+// page range with its own print settings (e.g. page 1 in color, the rest B&W).
+// The backend stores each segment as its own entry in `draft.files` — multiple
+// entries sharing the same `file` id, differing by `settings.pageSelection`.
+// The UI groups those entries back into one document with an array of segments.
 
-// The default (empty) per-document settings used by print-settings.jsx.
+// The default (empty) per-segment settings used by print-settings.jsx.
 export const DEFAULT_SETTINGS = {
 	color: "bw",
 	pageType: "A4",
@@ -29,15 +35,44 @@ export const settingsFromBackend = (s) => {
 	};
 };
 
-// { fileId, name } entries used by print-settings / shop-details params.
-export const documentsFromDraft = (draft) =>
-	(draft?.files || []).map((f) => ({
-		fileId: f.file?._id || f.file,
-		name: f.file?.originalName || "File",
-	}));
+const fileIdOf = (f) => f.file?._id || f.file;
 
-// Per-document settings array (UI shape) aligned with documentsFromDraft order.
-export const settingsArrayFromDraft = (draft) =>
-	(draft?.files || []).map((f) => settingsFromBackend(f.settings));
+// { fileId, name } entries — one per unique file, in first-seen order. Because a
+// split file appears as several `draft.files` entries, we dedupe by file id so a
+// document is only listed once.
+export const documentsFromDraft = (draft) => {
+	const seen = new Map();
+	for (const f of draft?.files || []) {
+		const id = fileIdOf(f);
+		if (!seen.has(id)) {
+			seen.set(id, { fileId: id, name: f.file?.originalName || "File" });
+		}
+	}
+	return Array.from(seen.values());
+};
 
-export default { DEFAULT_SETTINGS, settingsFromBackend, documentsFromDraft, settingsArrayFromDraft };
+// Per-document array of segments (each a UI settings object), grouped by file
+// and aligned with documentsFromDraft order. A file with no stored settings
+// still yields a single default segment so it renders.
+export const segmentsArrayFromDraft = (draft) => {
+	const groups = new Map();
+	for (const f of draft?.files || []) {
+		const id = fileIdOf(f);
+		if (!groups.has(id)) groups.set(id, []);
+		groups.get(id).push(settingsFromBackend(f.settings));
+	}
+	return Array.from(groups.values()).map((segs) => (segs.length ? segs : [{ ...DEFAULT_SETTINGS }]));
+};
+
+// Flatten a Segment[][] (per-document segments) into a flat Settings[] — one
+// entry per segment. Used where each segment is treated independently, e.g.
+// shop capability scoring.
+export const flattenSegments = (segmentsArray) => (segmentsArray || []).flat();
+
+export default {
+	DEFAULT_SETTINGS,
+	settingsFromBackend,
+	documentsFromDraft,
+	segmentsArrayFromDraft,
+	flattenSegments,
+};

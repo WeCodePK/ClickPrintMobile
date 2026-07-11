@@ -33,16 +33,50 @@ const SIDEDNESS_OPTIONS = [
 	{ label: "Double: long edge", value: "long" },
 ];
 
+// Short human label for a segment's page range, e.g. "" -> "All pages",
+// "1" -> "Page 1", "2-" -> "Pages 2–end", "2-5" -> "Pages 2–5".
+const formatPageRange = (value) => {
+	const v = (value || "").trim();
+	if (!v) return "All pages";
+	const simple = /^(\d+)-(\d*)$/.exec(v);
+	if (simple) {
+		const [, start, end] = simple;
+		if (!end) return `Pages ${start}–end`;
+		return `Pages ${start}–${end}`;
+	}
+	if (/^\d+$/.test(v)) return `Page ${v}`;
+	return `Pages ${v}`;
+};
+
+const segmentSummary = (seg) => `${seg.color === "color" ? "Color" : "B&W"} · ${seg.pageType}`;
+
 //----------------------------------- COMPONENT -----------------------------------//
 
-const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, settings, onSettingsChange, onSubmitAll, onMoveNext, onCreateJob, loading, error }) => {
+const DocumentSettingsForm = ({
+	documentName,
+	settings,
+	onSettingsChange,
+	segments = [],
+	currentSegmentIndex = 0,
+	onSelectSegment,
+	onAddSegment,
+	onRemoveSegment,
+	isSplit = false,
+	showCopyToAll = false,
+	onCopyToAll,
+	onContinue,
+	loading,
+	error,
+}) => {
 	const extension = documentName.includes(".") ? documentName.split(".").pop().toUpperCase() : "FILE";
 	// Restore the page-range inputs from a saved selection. A simple "start-end"
 	// (or "start-") selection fills the two boxes; anything else is an advanced range.
 	const initialPageSelection = (settings.pageSelection || "").trim();
 	const simpleRangeMatch = /^(\d+)-(\d*)$/.exec(initialPageSelection);
 	const initialAdvanced = initialPageSelection.length > 0 && !simpleRangeMatch;
-	const [pageRange, setPageRange] = useState(initialPageSelection ? "custom" : "all");
+	// When the document is split, each segment must name an explicit range, so the
+	// custom range inputs are always shown (no "All" option).
+	const [pageRange, setPageRange] = useState(initialPageSelection || isSplit ? "custom" : "all");
 	const [startPage, setStartPage] = useState(simpleRangeMatch ? simpleRangeMatch[1] : "");
 	const [endPage, setEndPage] = useState(simpleRangeMatch ? simpleRangeMatch[2] : "");
 	const [advancedMode, setAdvancedMode] = useState(initialAdvanced);
@@ -210,12 +244,6 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 		return false;
 	};
 
-	//----------------------------------- BUTTON LOGIC -----------------------------------//
-
-	const isFirstDoc = documentNumber === 1;
-	const isLastDoc = documentNumber === totalDocuments;
-	const isSingleDoc = totalDocuments === 1;
-
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
@@ -235,6 +263,60 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 						<Text style={styles.extensionBadge}>{extension}</Text>
 					</View>
 					<Text style={styles.documentName}>{documentName}</Text>
+				</View>
+
+				{/* Page-range segments: split a single file so different pages print
+				    with different settings (e.g. page 1 in color, the rest B&W). */}
+				<View style={styles.segmentSection}>
+					<View style={styles.segmentHeader}>
+						<View style={styles.segmentHeaderText}>
+							<Text style={styles.segmentTitle}>Page ranges</Text>
+							{!isSplit && (
+								<Text style={styles.segmentSubtitle}>Print different pages with different settings</Text>
+							)}
+						</View>
+						<TouchableOpacity style={styles.addSegmentButton} onPress={onAddSegment}>
+							<Feather name="plus" size={16} color={colors.printRequest} />
+							<Text style={styles.addSegmentText}>{isSplit ? "Add range" : "Split"}</Text>
+						</TouchableOpacity>
+					</View>
+
+					{isSplit && (
+						<ScrollView
+							horizontal
+							showsHorizontalScrollIndicator={false}
+							contentContainerStyle={styles.segmentChips}
+							keyboardShouldPersistTaps="handled"
+						>
+							{segments.map((seg, i) => {
+								const active = i === currentSegmentIndex;
+								return (
+									<TouchableOpacity
+										key={i}
+										style={[styles.segmentChip, active && styles.segmentChipActive]}
+										onPress={() => onSelectSegment(i)}
+										activeOpacity={0.8}
+									>
+										<View style={styles.segmentChipTextWrap}>
+											<Text style={[styles.segmentChipRange, active && styles.segmentChipRangeActive]} numberOfLines={1}>
+												{formatPageRange(seg.pageSelection)}
+											</Text>
+											<Text style={styles.segmentChipSummary} numberOfLines={1}>{segmentSummary(seg)}</Text>
+										</View>
+										{segments.length > 1 && (
+											<TouchableOpacity
+												style={styles.segmentRemove}
+												hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+												onPress={() => onRemoveSegment(i)}
+											>
+												<Feather name="x" size={14} color={colors.textSecondary} />
+											</TouchableOpacity>
+										)}
+									</TouchableOpacity>
+								);
+							})}
+						</ScrollView>
+					)}
 				</View>
 
 				<View style={styles.settingsSection}>
@@ -349,20 +431,23 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 						onSelect={(val) => onSettingsChange("pageType", val)}
 					/>
 
-					{/* Page Range */}
-					<SettingRow
-						label="Page Range"
-						options={[
-							{ label: "Custom", value: "custom" },
-							{ label: "All", value: "all" },
-						]}
-						selectedValue={pageRange}
-						onSelect={handlePageRangeChange}
-					/>
+					{/* Page Range — hidden when split, since each segment names its own range */}
+					{!isSplit && (
+						<SettingRow
+							label="Page Range"
+							options={[
+								{ label: "Custom", value: "custom" },
+								{ label: "All", value: "all" },
+							]}
+							selectedValue={pageRange}
+							onSelect={handlePageRangeChange}
+						/>
+					)}
 
 					{/* Adv Range Toggle*/}
-					{pageRange === "custom" && (
+					{(isSplit || pageRange === "custom") && (
 						<View style={styles.customRangeContainer}>
+							{isSplit && <Text style={styles.appliesToLabel}>Applies to pages</Text>}
 							{/* Adv Range Toggle Button */}
 							<TouchableOpacity
 								style={[styles.advancedToggleButton, advancedMode && styles.advancedToggleButtonActive]}
@@ -458,63 +543,29 @@ const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, se
 				style={[styles.footer, { paddingBottom: insets.bottom, bottom: keyboardOffset }]}
 				onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
 			>
-				{/* First doc with multiple docs: "Submit All" + "Move on" */}
-				{!isSingleDoc && isFirstDoc && (
-					<>
-						<TouchableOpacity
-							style={[styles.submitButton, styles.submitAllButton, isActionDisabled() && styles.submitButtonDisabled]}
-							onPress={onSubmitAll}
-							disabled={isActionDisabled()}
-						>
-							{loading ? (
-								<ActivityIndicator size="small" color={colors.cardBackground} />
-							) : (
-								<>
-									<Text style={styles.submitButtonText}>Apply to All Documents</Text>
-									<Feather name="check-circle" size={20} color={colors.cardBackground} />
-								</>
-							)}
-						</TouchableOpacity>
-						<TouchableOpacity
-							style={[styles.submitButton, isActionDisabled() && styles.submitButtonDisabled]}
-							onPress={onMoveNext}
-							disabled={isActionDisabled()}
-						>
-							<Text style={styles.submitButtonText}>Next Document ({documentNumber + 1}/{totalDocuments})</Text>
+				{/* Power action, demoted to a subtle ghost link */}
+				{showCopyToAll && (
+					<TouchableOpacity style={styles.copyAllButton} onPress={onCopyToAll} disabled={isActionDisabled()}>
+						<Feather name="copy" size={16} color={colors.textSecondary} />
+						<Text style={styles.copyAllText}>Copy these settings to all documents</Text>
+					</TouchableOpacity>
+				)}
+
+				{/* Single primary action */}
+				<TouchableOpacity
+					style={[styles.submitButton, isActionDisabled() && styles.submitButtonDisabled]}
+					onPress={onContinue}
+					disabled={isActionDisabled()}
+				>
+					{loading ? (
+						<ActivityIndicator size="small" color={colors.cardBackground} />
+					) : (
+						<>
+							<Text style={styles.submitButtonText}>Review &amp; Continue</Text>
 							<Feather name="arrow-right" size={20} color={colors.cardBackground} />
-						</TouchableOpacity>
-					</>
-				)}
-
-				{/* Middle docs: single "Move on" */}
-				{!isSingleDoc && !isFirstDoc && !isLastDoc && (
-					<TouchableOpacity
-						style={[styles.submitButton, isActionDisabled() && styles.submitButtonDisabled]}
-						onPress={onMoveNext}
-						disabled={isActionDisabled()}
-					>
-						<Text style={styles.submitButtonText}>Next Document ({documentNumber + 1}/{totalDocuments})</Text>
-						<Feather name="arrow-right" size={20} color={colors.cardBackground} />
-					</TouchableOpacity>
-				)}
-
-				{/* Last doc or single doc: "Create Print Job" */}
-				{(isSingleDoc || isLastDoc) && (
-					<TouchableOpacity
-						style={[styles.submitButton, isActionDisabled() && styles.submitButtonDisabled]}
-						onPress={onCreateJob}
-						disabled={isActionDisabled()}
-					>
-						{loading ? (
-							<ActivityIndicator size="small" color={colors.cardBackground} />
-						) : (
-							<>
-								<Text style={styles.submitButtonText}>Continue</Text>
-								<Feather name="arrow-right" size={20} color={colors.cardBackground} />
-							</>
-						)}
-					</TouchableOpacity>
-				)}
+						</>
+					)}
+				</TouchableOpacity>
 			</View>
 		</View>
 	);
@@ -564,6 +615,100 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 		color: colors.textPrimary,
 		flex: 1,
+	},
+	segmentSection: {
+		marginBottom: 24,
+	},
+	segmentHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: 12,
+	},
+	segmentHeaderText: {
+		flex: 1,
+	},
+	segmentTitle: {
+		fontSize: 15,
+		fontWeight: "700",
+		color: colors.textPrimary,
+	},
+	segmentSubtitle: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		marginTop: 2,
+	},
+	addSegmentButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		paddingVertical: 8,
+		paddingHorizontal: 12,
+		borderRadius: 8,
+		borderWidth: 1.5,
+		borderColor: colors.printRequest,
+		backgroundColor: colors.cardBackground,
+	},
+	addSegmentText: {
+		fontSize: 13,
+		fontWeight: "700",
+		color: colors.printRequest,
+	},
+	segmentChips: {
+		gap: 10,
+		paddingTop: 14,
+		paddingBottom: 2,
+	},
+	segmentChip: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		paddingVertical: 10,
+		paddingHorizontal: 14,
+		borderRadius: 12,
+		borderWidth: 1.5,
+		borderColor: colors.borderLight,
+		backgroundColor: colors.background,
+		maxWidth: 220,
+	},
+	segmentChipActive: {
+		borderColor: colors.printRequest,
+		backgroundColor: "rgba(255, 139, 123, 0.08)",
+	},
+	segmentChipTextWrap: {
+		flexShrink: 1,
+	},
+	segmentChipRange: {
+		fontSize: 13,
+		fontWeight: "700",
+		color: colors.textPrimary,
+	},
+	segmentChipRangeActive: {
+		color: colors.printRequest,
+	},
+	segmentChipSummary: {
+		fontSize: 11,
+		fontWeight: "500",
+		color: colors.textSecondary,
+		marginTop: 2,
+	},
+	segmentRemove: {
+		width: 22,
+		height: 22,
+		borderRadius: 11,
+		justifyContent: "center",
+		alignItems: "center",
+		backgroundColor: colors.cardBackground,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+	},
+	appliesToLabel: {
+		fontSize: 12,
+		fontWeight: "700",
+		color: colors.textSecondary,
+		textTransform: "uppercase",
+		letterSpacing: 0.5,
+		marginBottom: 12,
 	},
 	settingsSection: {
 		marginBottom: 28,
@@ -803,8 +948,17 @@ const styles = StyleSheet.create({
 		gap: 8,
 		marginBottom: 10,
 	},
-	submitAllButton: {
-		backgroundColor: colors.primary,
+	copyAllButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		paddingVertical: 10,
+	},
+	copyAllText: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: colors.textSecondary,
 	},
 	submitButtonDisabled: {
 		backgroundColor: colors.navInactive,
