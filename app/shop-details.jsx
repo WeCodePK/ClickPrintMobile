@@ -9,6 +9,8 @@ import { showAlert } from "../utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { fetchDraft } from "../services/fetchDraft";
+import { documentsFromDraft, settingsArrayFromDraft } from "../utils/draft";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -49,16 +51,25 @@ const ShopDetails = () => {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [onlineOnly, setOnlineOnly] = useState(false);
 
-	// Parse params from print-settings
-	let parsedDocuments = [];
-	let parsedSettings = [];
+	// Parse params from print-settings (fast path); the draft is the source of
+	// truth and re-hydrates these below when resuming / coming back.
 	const draftId = params.draftId;
-	try {
-		parsedDocuments = JSON.parse(params.documents || "[]");
-		parsedSettings = JSON.parse(params.allSettings || "[]");
-	} catch (e) {
-		console.error("Failed to parse params:", e);
-	}
+	const [parsedDocuments, setParsedDocuments] = useState(() => {
+		try {
+			return JSON.parse(params.documents || "[]");
+		} catch (e) {
+			console.error("Failed to parse documents param:", e);
+			return [];
+		}
+	});
+	const [parsedSettings, setParsedSettings] = useState(() => {
+		try {
+			return JSON.parse(params.allSettings || "[]");
+		} catch (e) {
+			console.error("Failed to parse allSettings param:", e);
+			return [];
+		}
+	});
 
 	// Sort shops by match score then filter by search
 	const sortedShops = [...shops].sort((a, b) => {
@@ -72,13 +83,41 @@ const ShopDetails = () => {
 		.filter((shop) => !onlineOnly || shop.isOnline);
 
 	useEffect(() => {
-		if (parsedDocuments.length === 0 || parsedSettings.length === 0) {
-			showAlert("Error", "Missing required information. Please go back.");
-			router.back();
-			return;
-		}
 		fetchShops();
-	}, [parsedDocuments.length, parsedSettings.length, router]);
+		if (draftId) {
+			hydrateFromDraft();
+		} else if (parsedDocuments.length === 0 || parsedSettings.length === 0) {
+			showAlert("Error", "Missing required information. Please go back.");
+			router.replace("/(tabs)/home");
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// Restore documents/settings and pre-select the draft's saved shop.
+	const hydrateFromDraft = async () => {
+		try {
+			const draft = await fetchDraft(draftId);
+			if (!draft) return;
+			const docs = documentsFromDraft(draft);
+			if (docs.length > 0) {
+				setParsedDocuments(docs);
+				setParsedSettings(settingsArrayFromDraft(draft));
+			}
+			const shopId = draft.shop?._id || (typeof draft.shop === "string" ? draft.shop : null);
+			if (shopId) setSelectedShop(shopId);
+		} catch (e) {
+			console.error("Error loading draft for shop selection:", e);
+		}
+	};
+
+	// Back returns to print-settings (which repopulates from the saved draft).
+	const handleBack = () => {
+		if (draftId) {
+			router.replace({ pathname: "/print-settings", params: { draftId, documents: JSON.stringify(parsedDocuments) } });
+		} else {
+			router.replace("/(tabs)/home");
+		}
+	};
 
 	const fetchShops = async () => {
 		try {
@@ -169,7 +208,7 @@ const ShopDetails = () => {
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 			<View style={styles.header}>
-				<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+				<TouchableOpacity onPress={handleBack} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
 				<Text style={styles.headerTitle}>Select Print Shop</Text>

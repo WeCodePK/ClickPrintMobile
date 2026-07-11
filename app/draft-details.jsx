@@ -9,6 +9,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import SecureStore from "../utils/storage";
+import { documentsFromDraft, settingsArrayFromDraft } from "../utils/draft";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -67,7 +68,7 @@ const DraftDetails = () => {
 			<SafeAreaView style={styles.container} edges={["top"]}>
 				<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 				<View style={styles.header}>
-					<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+					<TouchableOpacity onPress={() => router.replace("/(tabs)/home")} style={styles.backButton}>
 						<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 					</TouchableOpacity>
 					<Text style={styles.headerTitle}>Draft Details</Text>
@@ -110,6 +111,23 @@ const DraftDetails = () => {
 
 	//----------------------------------- HANDLERS -----------------------------------//
 
+	// Back returns to shop selection so the user can change the shop; the draft
+	// already holds the files/settings needed to repopulate the flow.
+	const handleBack = () => {
+		if (draft?._id) {
+			router.replace({
+				pathname: "/shop-details",
+				params: {
+					draftId: draft._id,
+					documents: JSON.stringify(documentsFromDraft(draft)),
+					allSettings: JSON.stringify(settingsArrayFromDraft(draft)),
+				},
+			});
+		} else {
+			router.replace("/(tabs)/home");
+		}
+	};
+
 	const handleSubmitDraft = async () => {
 		try {
 			setSubmitting(true);
@@ -149,7 +167,7 @@ const DraftDetails = () => {
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 			<View style={styles.header}>
-				<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+				<TouchableOpacity onPress={handleBack} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
 				<Text style={styles.headerTitle}>Draft Details</Text>

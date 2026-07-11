@@ -2,13 +2,14 @@
 
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import SecureStore from "../utils/storage";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { fetchDraft } from "../services/fetchDraft";
 import DocumentCard from "./components/uploadDocument/DocumentCard";
 
 //----------------------------------- CONSTANTS ------------------------------------//
@@ -20,10 +21,48 @@ const API_BASE_URL = config.apiBaseUrl;
 const UploadDocument = () => {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
+	const { draftId } = useLocalSearchParams();
 	const [documents, setDocuments] = useState([]);
 	const [picking, setPicking] = useState(false);
 	const [uploading, setUploading] = useState(false);
+	const [hydrating, setHydrating] = useState(!!draftId);
 	const [error, setError] = useState(null);
+
+	// Resuming an existing draft: pull the already-uploaded files from the
+	// backend so they show up here. We only have their names/ids (not the
+	// original bytes), which is enough to display them and keep them in the
+	// draft unless the user removes or adds files.
+	useEffect(() => {
+		if (!draftId) return;
+		let active = true;
+		(async () => {
+			try {
+				const draft = await fetchDraft(draftId);
+				if (!active || !draft) return;
+				const existingDocs = (draft.files || []).map((f) => {
+					const originalName = f.file?.originalName || "Document";
+					return {
+						// Synthetic file object so DocumentCard can show the name/extension.
+						file: { name: originalName },
+						name: originalName.replace(/\.[^/.]+$/, "") || "Document",
+						fileId: f.file?._id || f.file,
+						settings: f.settings || {},
+						existing: true,
+						status: "idle",
+					};
+				});
+				setDocuments(existingDocs);
+			} catch (err) {
+				console.error("Error loading draft files:", err);
+				setError("Failed to load the saved documents. Please try again.");
+			} finally {
+				if (active) setHydrating(false);
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [draftId]);
 
 
 	const handleDocumentPick = async () => {
@@ -72,61 +111,96 @@ const UploadDocument = () => {
 		setUploading(true);
 		setError(null);
 		const failedDocs = [];
-		const documentArray = [];
 		const token = await SecureStore.getItemAsync("authToken");
 		try {
-			const uploadPromises = documents.map(async (doc, index) => {
-				setDocuments((prev) => {
-					const newDocs = [...prev];
-					newDocs[index] = { ...newDocs[index], status: "uploading" };
-					return newDocs;
-				});
-
-				const formData = new FormData();
-				if (Platform.OS === "web") {
-					// On web, FormData needs a real Blob/File. Appending the RN
-					// { uri, name, type } object would serialize to "[object Object]".
-					// expo-document-picker exposes the browser File on `.file`; fall
-					// back to fetching the blob: URL if it isn't present.
-					let filePart = doc.file.file;
-					if (!filePart) {
-						const res = await fetch(doc.file.uri);
-						filePart = await res.blob();
+			// Upload only newly-picked files; files already on the draft keep their
+			// existing id (and settings). Results stay in document order.
+			const results = await Promise.all(
+				documents.map(async (doc, index) => {
+					if (doc.existing) {
+						return { fileId: doc.fileId, name: doc.name || doc.file.name, settings: doc.settings };
 					}
-					formData.append("file", filePart, doc.file.name);
-				} else {
-					formData.append("file", {
-						uri: doc.file.uri,
-						name: doc.file.name,
-						type: doc.file.mimeType,
-					});
-				}
-				const fileId = await uploadDocument(formData, doc.file.name, token);
 
-				if (fileId) {
-					documentArray.push({ fileId, name: doc.name || doc.file.name });
 					setDocuments((prev) => {
 						const newDocs = [...prev];
-						newDocs[index] = { ...newDocs[index], status: "success" };
+						newDocs[index] = { ...newDocs[index], status: "uploading" };
 						return newDocs;
 					});
-				} else {
+
+					const formData = new FormData();
+					if (Platform.OS === "web") {
+						// On web, FormData needs a real Blob/File. Appending the RN
+						// { uri, name, type } object would serialize to "[object Object]".
+						// expo-document-picker exposes the browser File on `.file`; fall
+						// back to fetching the blob: URL if it isn't present.
+						let filePart = doc.file.file;
+						if (!filePart) {
+							const res = await fetch(doc.file.uri);
+							filePart = await res.blob();
+						}
+						formData.append("file", filePart, doc.file.name);
+					} else {
+						formData.append("file", {
+							uri: doc.file.uri,
+							name: doc.file.name,
+							type: doc.file.mimeType,
+						});
+					}
+					const fileId = await uploadDocument(formData, doc.file.name, token);
+
+					if (fileId) {
+						setDocuments((prev) => {
+							const newDocs = [...prev];
+							newDocs[index] = { ...newDocs[index], status: "success" };
+							return newDocs;
+						});
+						return { fileId, name: doc.name || doc.file.name };
+					}
+
 					failedDocs.push(doc.file.name);
 					setDocuments((prev) => {
 						const newDocs = [...prev];
 						newDocs[index] = { ...newDocs[index], status: "failed" };
 						return newDocs;
 					});
+					return null;
+				}),
+			);
+
+			if (failedDocs.length > 0) {
+				setError(`${failedDocs.length} document(s) failed to upload: ${failedDocs.join(", ")}. Please try again.`);
+				return;
+			}
+
+			// Wait 500ms to show the checkmarks before navigating
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
+			const documentArray = results.map((r) => ({ fileId: r.fileId, name: r.name }));
+
+			let targetDraftId = draftId;
+			if (draftId) {
+				// Resuming: replace the whole files array, preserving settings on
+				// files that already had them.
+				const files = results.map((r) => {
+					const entry = { file: r.fileId };
+					if (r.settings && Object.keys(r.settings).length > 0) entry.settings = r.settings;
+					return entry;
+				});
+				const patchResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
+					method: "PATCH",
+					headers: {
+						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ files }),
+				});
+				const patchData = await patchResponse.json();
+				if (!patchResponse.ok) {
+					throw new Error(patchData.message || "Failed to update draft.");
 				}
-			});
-
-			await Promise.all(uploadPromises);
-
-			if (failedDocs.length === 0) {
-				// Wait 500ms to show the checkmarks before navigating
-				await new Promise((resolve) => setTimeout(resolve, 500));
-
-				// Create a draft with just the file IDs
+				console.log("Draft updated with files:", targetDraftId);
+			} else {
+				// New draft with just the file IDs
 				const draftFiles = documentArray.map((doc) => ({ file: doc.fileId }));
 				const draftResponse = await fetch(`${API_BASE_URL}/drafts`, {
 					method: "POST",
@@ -142,20 +216,18 @@ const UploadDocument = () => {
 					throw new Error(draftData.message || "Failed to create draft.");
 				}
 
-				const draftId = draftData.data.draft._id;
-				console.log("Draft created with ID:", draftId);
-
-				setDocuments([]);
-				router.push({
-					pathname: "/print-settings",
-					params: {
-						draftId,
-						documents: JSON.stringify(documentArray),
-					},
-				});
-			} else {
-				setError(`${failedDocs.length} document(s) failed to upload: ${failedDocs.join(", ")}. Please try again.`);
+				targetDraftId = draftData.data.draft._id;
+				console.log("Draft created with ID:", targetDraftId);
 			}
+
+			setDocuments([]);
+			router.push({
+				pathname: "/print-settings",
+				params: {
+					draftId: targetDraftId,
+					documents: JSON.stringify(documentArray),
+				},
+			});
 		} catch (err) {
 			console.error("Error uploading documents:", err);
 			setError("Failed to upload documents. Please try again.");
@@ -206,9 +278,16 @@ const UploadDocument = () => {
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 				<View style={styles.section}>
 
+					{/* Loading saved draft files */}
+					{hydrating && (
+						<View style={[styles.uploadArea, styles.uploadAreaFilled]}>
+							<ActivityIndicator size="large" color={colors.primary} />
+							<Text style={styles.uploadLoadingText}>Loading your documents...</Text>
+						</View>
+					)}
 
 					{/* Empty state - upload area */}
-					{!hasDocuments && !picking && (
+					{!hydrating && !hasDocuments && !picking && (
 						<TouchableOpacity style={styles.uploadArea} onPress={handleDocumentPick}>
 							<Feather name="upload-cloud" size={48} color={colors.primary} />
 							<Text style={styles.uploadText}>Upload Your Documents</Text>
@@ -236,7 +315,7 @@ const UploadDocument = () => {
 					{hasDocuments && (
 						<View style={styles.documentsList}>
 							{documents.map((doc, index) => (
-								<DocumentCard key={`${doc.file.uri}-${index}`} doc={doc} index={index} onRemove={handleRemoveDocument} />
+								<DocumentCard key={`${doc.fileId || doc.file?.uri || "doc"}-${index}`} doc={doc} index={index} onRemove={handleRemoveDocument} />
 							))}
 						</View>
 					)}

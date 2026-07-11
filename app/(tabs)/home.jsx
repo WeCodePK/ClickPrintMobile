@@ -1,19 +1,19 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
-import { useRouter, useFocusEffect } from "expo-router";
-import SecureStore from "../../utils/storage";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Dimensions, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { showAlert } from "../../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../../config/config";
 import { colors } from "../../constants/colors";
+import { useAuth } from "../../context/auth";
 import { useActiveJobs } from "../../hooks/useActiveJobs";
 import { useDrafts } from "../../hooks/useDrafts";
+import { showAlert } from "../../utils/alert";
+import SecureStore from "../../utils/storage";
 import ActiveJobCard from "../components/ActiveJobCard";
 import DraftItem from "../components/DraftItem";
-import { useAuth } from "../../context/auth";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -169,7 +169,7 @@ const HomePage = () => {
 						<TouchableOpacity style={styles.balanceCard}>
 							<View style={styles.balanceContent}>
 								<Text style={styles.balanceLabel}>Current Balance</Text>
-								<Text style={styles.balanceAmount}>{accountBalance}</Text>
+								<Text style={styles.balanceAmount}>Rs. {accountBalance}</Text>
 							</View>
 						</TouchableOpacity>
 

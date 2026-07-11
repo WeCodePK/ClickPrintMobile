@@ -4,11 +4,13 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import SecureStore from "../utils/storage";
 import { useEffect, useState } from "react";
-import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { fetchDraft } from "../services/fetchDraft";
+import { DEFAULT_SETTINGS, documentsFromDraft, settingsArrayFromDraft } from "../utils/draft";
 import DocumentSettingsForm from "./components/printSettings/DocumentSettingsForm";
 
 //----------------------------------- CONSTANTS -----------------------------------//
@@ -22,33 +24,61 @@ const PrintSettings = () => {
 	const params = useLocalSearchParams();
 
 	const { documents, draftId } = params;
-	let parsedDocuments = [];
-	try {
-		parsedDocuments = JSON.parse(documents || "[]");
-	} catch (e) {
-		console.error("Failed to parse documents param:", e);
-	}
+
+	const [parsedDocuments, setParsedDocuments] = useState(() => {
+		try {
+			return JSON.parse(documents || "[]");
+		} catch (e) {
+			console.error("Failed to parse documents param:", e);
+			return [];
+		}
+	});
 	const numberOfDocuments = parsedDocuments.length || 1;
 
 	const [currentDocIndex, setCurrentDocIndex] = useState(0);
-	const [allSettings, setAllSettings] = useState(() =>
-		Array.from({ length: numberOfDocuments }, () => ({
-			color: "bw",
-			pageType: "A4",
-			orientation: "portrait",
-			pagesPerSheet: 1,
-			numberOfCopies: "1",
-			pageSelection: "",
-			sidedness: "none",
-		})),
-	);
+	const [allSettings, setAllSettings] = useState(() => {
+		try {
+			const parsed = JSON.parse(params.allSettings || "[]");
+			if (parsed.length > 0) return parsed;
+		} catch (e) {
+			console.error("Failed to parse allSettings param:", e);
+		}
+		return Array.from({ length: parsedDocuments.length || 1 }, () => ({ ...DEFAULT_SETTINGS }));
+	});
+	const [hydrating, setHydrating] = useState(!!draftId);
+
+	// Restore files + settings from the saved draft so resuming (or coming back
+	// from shop selection) shows exactly what was persisted last.
+	useEffect(() => {
+		if (!draftId) return;
+		let active = true;
+		(async () => {
+			try {
+				const draft = await fetchDraft(draftId);
+				if (!active || !draft) return;
+				const docs = documentsFromDraft(draft);
+				if (docs.length > 0) {
+					setParsedDocuments(docs);
+					setAllSettings(settingsArrayFromDraft(draft));
+					setCurrentDocIndex(0);
+				}
+			} catch (e) {
+				console.error("Error loading draft settings:", e);
+			} finally {
+				if (active) setHydrating(false);
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [draftId]);
 
 	useEffect(() => {
-		if (parsedDocuments.length === 0) {
+		if (!draftId && parsedDocuments.length === 0) {
 			showAlert("Error", "Missing required document information.");
-			router.back();
+			router.replace("/(tabs)/home");
 		}
-	}, [router, parsedDocuments.length]);
+	}, [router, draftId, parsedDocuments.length]);
 
 	const handleSettingsChange = (field, value) => {
 		setAllSettings((prev) => {
@@ -61,6 +91,20 @@ const PrintSettings = () => {
 	const handleMoveNext = () => {
 		if (currentDocIndex < numberOfDocuments - 1) {
 			setCurrentDocIndex(currentDocIndex + 1);
+		}
+	};
+
+	// Back steps through documents first; from the first document it returns to
+	// the upload screen (which repopulates the draft's files from the backend).
+	const handleBack = () => {
+		if (currentDocIndex > 0) {
+			setCurrentDocIndex(currentDocIndex - 1);
+			return;
+		}
+		if (draftId) {
+			router.replace({ pathname: "/upload-document", params: { draftId } });
+		} else {
+			router.replace("/(tabs)/home");
 		}
 	};
 
@@ -145,7 +189,7 @@ const PrintSettings = () => {
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 			<View style={styles.header}>
-				<TouchableOpacity onPress={() => (currentDocIndex > 0 ? setCurrentDocIndex(currentDocIndex - 1) : router.back())} style={styles.backButton}>
+				<TouchableOpacity onPress={handleBack} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
 				<Text style={styles.headerTitle}>
@@ -154,19 +198,26 @@ const PrintSettings = () => {
 				<View style={styles.placeholder} />
 			</View>
 
-			<DocumentSettingsForm
-				key={currentDocIndex}
-				documentName={currentDoc.name}
-				documentNumber={currentDocIndex + 1}
-				totalDocuments={numberOfDocuments}
-				settings={allSettings[currentDocIndex]}
-				onSettingsChange={handleSettingsChange}
-				onSubmitAll={handleSubmitAll}
-				onMoveNext={handleMoveNext}
-				onCreateJob={handleCreateJob}
-				loading={false}
-				error={null}
-			/>
+			{hydrating ? (
+				<View style={styles.loadingContainer}>
+					<ActivityIndicator size="large" color={colors.primary} />
+					<Text style={styles.loadingText}>Loading settings...</Text>
+				</View>
+			) : (
+				<DocumentSettingsForm
+					key={currentDocIndex}
+					documentName={currentDoc.name}
+					documentNumber={currentDocIndex + 1}
+					totalDocuments={numberOfDocuments}
+					settings={allSettings[currentDocIndex]}
+					onSettingsChange={handleSettingsChange}
+					onSubmitAll={handleSubmitAll}
+					onMoveNext={handleMoveNext}
+					onCreateJob={handleCreateJob}
+					loading={false}
+					error={null}
+				/>
+			)}
 		</SafeAreaView>
 	);
 };
@@ -201,6 +252,17 @@ const styles = StyleSheet.create({
 	},
 	placeholder: {
 		width: 40,
+	},
+	loadingContainer: {
+		flex: 1,
+		justifyContent: "center",
+		alignItems: "center",
+		backgroundColor: colors.cardBackground,
+	},
+	loadingText: {
+		marginTop: 16,
+		fontSize: 16,
+		color: colors.textSecondary,
 	},
 });
 

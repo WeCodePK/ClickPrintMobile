@@ -37,12 +37,17 @@ const SIDEDNESS_OPTIONS = [
 
 const DocumentSettingsForm = ({ documentName, documentNumber, totalDocuments, settings, onSettingsChange, onSubmitAll, onMoveNext, onCreateJob, loading, error }) => {
 	const extension = documentName.includes(".") ? documentName.split(".").pop().toUpperCase() : "FILE";
-	const [pageRange, setPageRange] = useState(settings.pageSelection ? "custom" : "all");
-	const [startPage, setStartPage] = useState("");
-	const [endPage, setEndPage] = useState("");
-	const [advancedMode, setAdvancedMode] = useState(false);
-	const [advancedRange, setAdvancedRange] = useState("");
-	const [isAdvancedRangeValid, setIsAdvancedRangeValid] = useState(false);
+	// Restore the page-range inputs from a saved selection. A simple "start-end"
+	// (or "start-") selection fills the two boxes; anything else is an advanced range.
+	const initialPageSelection = (settings.pageSelection || "").trim();
+	const simpleRangeMatch = /^(\d+)-(\d*)$/.exec(initialPageSelection);
+	const initialAdvanced = initialPageSelection.length > 0 && !simpleRangeMatch;
+	const [pageRange, setPageRange] = useState(initialPageSelection ? "custom" : "all");
+	const [startPage, setStartPage] = useState(simpleRangeMatch ? simpleRangeMatch[1] : "");
+	const [endPage, setEndPage] = useState(simpleRangeMatch ? simpleRangeMatch[2] : "");
+	const [advancedMode, setAdvancedMode] = useState(initialAdvanced);
+	const [advancedRange, setAdvancedRange] = useState(initialAdvanced ? initialPageSelection : "");
+	const [isAdvancedRangeValid, setIsAdvancedRangeValid] = useState(initialAdvanced);
 	const [showPagesPerSheetDropdown, setShowPagesPerSheetDropdown] = useState(false);
 	const [showSidednessDropdown, setShowSidednessDropdown] = useState(false);
 	const [keyboardOffset, setKeyboardOffset] = useState(0);
