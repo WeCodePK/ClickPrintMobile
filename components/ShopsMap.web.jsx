@@ -78,16 +78,14 @@ const ShopsMap = ({ shops, selectedShopId, initialRegion, onSelectShop, onDesele
 				leafletRef.current = L;
 				ensureLabelStyles();
 
-				const map = L.map(containerRef.current, { zoomControl: false, attributionControl: true }).setView(
+				const map = L.map(containerRef.current, { zoomControl: false, attributionControl: false }).setView(
 					[initialRegion.latitude, initialRegion.longitude],
 					13
 				);
 				// Minimal light basemap: streets only, no labels (CARTO Positron no-labels).
 				L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
 					maxZoom: 20,
-					subdomains: "abcd",
-					attribution:
-						'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+					subdomains: "abcd"
 				}).addTo(map);
 
 				map.on("click", () => deselectRef.current?.());
@@ -140,10 +138,10 @@ const ShopsMap = ({ shops, selectedShopId, initialRegion, onSelectShop, onDesele
 		});
 
 		if (shops.length === 1) {
-			map.setView([shops[0].latLng.latitude, shops[0].latLng.longitude], 15);
+			map.setView([shops[0].latLng.latitude, shops[0].latLng.longitude], 16);
 		} else if (shops.length > 1) {
 			const bounds = L.latLngBounds(shops.map((s) => [s.latLng.latitude, s.latLng.longitude]));
-			map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+			map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
 		}
 		// selectedShopId handled in its own effect below to avoid refitting bounds on select.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
