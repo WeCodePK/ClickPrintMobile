@@ -17,9 +17,7 @@ const API_BASE_URL = config.apiBaseUrl;
 const STATUS_CONFIG = {
 	pending: { label: "Pending", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
 	approved: { label: "Approved", color: colors.primary, bg: "rgba(0, 217, 163, 0.12)" },
-	completed: { label: "Completed", color: colors.primary, bg: "rgba(0, 217, 163, 0.12)" },
-	rejected: { label: "Rejected", color: colors.printRequest, bg: "rgba(255, 139, 123, 0.12)" },
-	cancelled: { label: "Cancelled", color: colors.printRequest, bg: "rgba(255, 139, 123, 0.12)" },
+	declined: { label: "Declined", color: colors.printRequest, bg: "rgba(255, 139, 123, 0.12)" },
 };
 
 //----------------------------------- HELPERS -----------------------------------//
@@ -152,7 +150,17 @@ const TopUpWallet = () => {
 				) : (
 					<View style={styles.listCard}>
 						{topups.map((item, index) => (
-							<TopupItem key={item._id || index} item={item} isLast={index === topups.length - 1} />
+							<TopupItem
+								key={item._id || index}
+								item={item}
+								isLast={index === topups.length - 1}
+								onPress={() =>
+									router.push({
+										pathname: "/topup-details",
+										params: { topupId: item._id, topup: JSON.stringify(item) },
+									})
+								}
+							/>
 						))}
 					</View>
 				)}
@@ -161,14 +169,14 @@ const TopUpWallet = () => {
 	);
 };
 
-const TopupItem = ({ item, isLast }) => {
+const TopupItem = ({ item, isLast, onPress }) => {
 	const statusKey = (item.status || "pending").toLowerCase();
 	const statusConfig = STATUS_CONFIG[statusKey] || { label: item.status || "Pending", color: colors.textSecondary, bg: colors.background };
 	const shopName = item.shop?.name || (typeof item.shop === "string" ? "Shop" : "Shop");
 	const date = formatDate(item.createdAt || item.date);
 
 	return (
-		<View style={[styles.topupRow, !isLast && styles.topupRowBorder]}>
+		<TouchableOpacity style={[styles.topupRow, !isLast && styles.topupRowBorder]} onPress={onPress} activeOpacity={0.6}>
 			<View style={styles.topupIcon}>
 				<Feather name="arrow-down" size={18} color={colors.primary} />
 			</View>
@@ -187,7 +195,8 @@ const TopupItem = ({ item, isLast }) => {
 			<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
 				<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
 			</View>
-		</View>
+			<Feather name="chevron-right" size={20} color={colors.textSecondary} style={styles.topupChevron} />
+		</TouchableOpacity>
 	);
 };
 
@@ -369,6 +378,9 @@ const styles = StyleSheet.create({
 	statusText: {
 		fontSize: 12,
 		fontWeight: "600",
+	},
+	topupChevron: {
+		marginLeft: 4,
 	},
 });
 
