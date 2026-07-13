@@ -9,6 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { useAuth } from "../context/auth";
+import { getNameHint, isValidName } from "../utils/validateName";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -34,6 +35,8 @@ const ProfileSetup = () => {
 
 
 	const trimedName = userName.trim();
+	const nameHint = getNameHint(userName);
+	const nameIsValid = isValidName(userName);
 
 	useEffect(() => {
 		// Entrance animation
@@ -57,22 +60,9 @@ const ProfileSetup = () => {
 	}, [opacityAnim, scaleAnim, slideAnim]);
 
 	const handleSubmit = async () => {
+		if (!nameIsValid) return;
+
 		const token = await SecureStore.getItemAsync("authToken");
-
-		if (trimedName.length < 5 || trimedName.length > 20) {
-			setError("Name must be between 5 and 20 characters.");
-			return;
-		}
-
-		if (!/^[A-Za-z\s]+$/.test(trimedName)) {
-			setError("Only letters and spaces are allowed.");
-			return;
-		}
-
-		if (/\s{2,}/.test(trimedName)) {
-			setError("Name cannot contain multiple consecutive spaces.");
-			return;
-		}
 
 		setError("");
 		setLoading(true);
@@ -167,11 +157,11 @@ const ProfileSetup = () => {
 							{/* Input Section */}
 							<View style={styles.inputSection}>
 								<Animated.View style={[styles.inputWrapper, { transform: [{ scale: inputScale }] }]}>
-									<View style={[styles.inputContainer, error && styles.inputContainerError]}>
+									<View style={[styles.inputContainer, (error || nameHint) && styles.inputContainerError]}>
 										<MaterialCommunityIcons
 											name="pencil"
 											size={20}
-											color={error ? "#FF4F00" : colors.primary}
+											color={error || nameHint ? "#FF4F00" : colors.primary}
 											style={styles.inputIcon}
 										/>
 										<TextInput
@@ -190,6 +180,8 @@ const ProfileSetup = () => {
 									<Animated.View style={{ opacity: opacityAnim }}>
 										<Text style={styles.errorText}>{error}</Text>
 									</Animated.View>
+								) : nameHint ? (
+									<Text style={styles.errorText}>{nameHint}</Text>
 								) : (
 									<Text style={styles.helperText}>
 										{trimedName.length}/20 characters (5-20 required)
@@ -206,13 +198,10 @@ const ProfileSetup = () => {
 								<TouchableOpacity
 									style={[
 										styles.submitButton,
-										(loading ||
-											trimedName.length < 5 ||
-											trimedName.length > 20) &&
-										styles.submitButtonDisabled,
+										(loading || !nameIsValid) && styles.submitButtonDisabled,
 									]}
 									onPress={handleSubmit}
-									disabled={loading || trimedName.length < 5 || trimedName.length > 20}
+									disabled={loading || !nameIsValid}
 								>
 									{loading ? (
 										<View style={styles.loadingContainer}>

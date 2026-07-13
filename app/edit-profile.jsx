@@ -17,6 +17,7 @@ import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { getNameHint, isValidName } from "../utils/validateName";
 
 const EditProfile = () => {
     const router = useRouter();
@@ -57,38 +58,11 @@ const EditProfile = () => {
 
     const trimmedName = name.trim();
     const hasChanged = trimmedName !== originalName.trim();
-
-
-    const isValidLength = () => {
-        return trimmedName.length >= 5 && trimmedName.length <= 20;
-    };
+    const nameHint = getNameHint(name);
+    const nameIsValid = isValidName(name);
 
     const handleSave = async () => {
-        const trimmedName = name.trim();
-
-        if (trimmedName === originalName.trim()) {
-            showAlert(
-                "No Changes",
-                "New name cannot be the same as your current name."
-            );
-            return;
-        }
-
-        if (!/^[A-Za-z\s]+$/.test(trimmedName)) {
-            showAlert(
-                "Invalid Name",
-                "Only letters and spaces are allowed."
-            );
-            return;
-        }
-
-        if (/\s{2,}/.test(trimmedName)) {
-            showAlert(
-                "Invalid Name",
-                "Name cannot contain multiple consecutive spaces."
-            );
-            return;
-        }
+        if (!nameIsValid || !hasChanged) return;
 
         setSaving(true);
 
@@ -167,7 +141,7 @@ const EditProfile = () => {
                     </Text>
 
                     <TextInput
-                        style={styles.input}
+                        style={[styles.input, nameHint && styles.inputError]}
                         placeholder="Enter your name"
                         placeholderTextColor={colors.textSecondary}
                         value={name}
@@ -175,15 +149,23 @@ const EditProfile = () => {
                         autoCapitalize="words"
                         maxLength={20}
                     />
+
+                    {nameHint ? (
+                        <Text style={styles.errorText}>{nameHint}</Text>
+                    ) : (
+                        <Text style={styles.helperText}>
+                            {trimmedName.length}/20 characters (5-20 required)
+                        </Text>
+                    )}
                 </View>
 
                 <TouchableOpacity
                     style={[
                         styles.saveButton,
-                        (!isValidLength() || saving || !hasChanged) &&
+                        (!nameIsValid || saving || !hasChanged) &&
                         styles.saveButtonDisabled,
                     ]}
-                    disabled={!isValidLength() || saving || !hasChanged}
+                    disabled={!nameIsValid || saving || !hasChanged}
                     onPress={handleSave}
                 >
                     {saving ? (
@@ -254,6 +236,25 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         fontSize: 16,
         color: colors.textPrimary,
+    },
+
+    inputError: {
+        borderColor: "#FF4F00",
+    },
+
+    errorText: {
+        fontSize: 14,
+        color: "#FF4F00",
+        fontWeight: "600",
+        marginTop: 8,
+        marginLeft: 4,
+    },
+
+    helperText: {
+        fontSize: 13,
+        color: colors.textSecondary,
+        marginTop: 8,
+        marginLeft: 4,
     },
 
     saveButton: {
