@@ -51,8 +51,8 @@ const TopUpAmount = () => {
 			return;
 		}
 		router.push({
-			pathname: "/shop-details",
-			params: { mode: "topup", topupAmount: amount },
+			pathname: "/topup-confirm",
+			params: { amount },
 		});
 	};
 

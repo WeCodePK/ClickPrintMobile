@@ -51,11 +51,6 @@ const ShopDetails = () => {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [onlineOnly, setOnlineOnly] = useState(false);
 
-	// Top up mode: this screen is reused to pick the shop a wallet top up is
-	// handed to. There's no draft/print settings involved — just an amount.
-	const isTopup = params.mode === "topup";
-	const topupAmount = params.topupAmount;
-
 	// Parse params from print-settings (fast path); the draft is the source of
 	// truth and re-hydrates these below when resuming / coming back.
 	const draftId = params.draftId;
@@ -91,9 +86,7 @@ const ShopDetails = () => {
 
 	useEffect(() => {
 		fetchShops();
-		if (isTopup) {
-			// No draft / print settings to hydrate in top up mode.
-		} else if (draftId) {
+		if (draftId) {
 			hydrateFromDraft();
 		} else if (parsedDocuments.length === 0 || parsedSettings.length === 0) {
 			showAlert("Error", "Missing required information. Please go back.");
@@ -121,9 +114,7 @@ const ShopDetails = () => {
 
 	// Back returns to print-settings (which repopulates from the saved draft).
 	const handleBack = () => {
-		if (isTopup) {
-			router.back();
-		} else if (draftId) {
+		if (draftId) {
 			router.replace({ pathname: "/print-settings", params: { draftId, documents: JSON.stringify(parsedDocuments) } });
 		} else {
 			router.replace("/(tabs)/home");
@@ -161,17 +152,7 @@ const ShopDetails = () => {
 
 	const handleContinue = async () => {
 		if (!selectedShop) {
-			showAlert("No Shop Selected", "Please select a shop to continue.");
-			return;
-		}
-
-		// Top up mode: no draft to update, just carry the amount + shop forward to
-		// the confirmation / payment screen.
-		if (isTopup) {
-			router.push({
-				pathname: "/topup-confirm",
-				params: { shopId: selectedShop, amount: topupAmount },
-			});
+			showAlert("No Shop Selected", "Please select a print shop to continue.");
 			return;
 		}
 
@@ -232,7 +213,7 @@ const ShopDetails = () => {
 				<TouchableOpacity onPress={handleBack} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>{isTopup ? "Select Shop" : "Select Print Shop"}</Text>
+				<Text style={styles.headerTitle}>Select Print Shop</Text>
 				<View style={styles.placeholder} />
 			</View>
 
@@ -260,11 +241,7 @@ const ShopDetails = () => {
 			{/* Priority info banner */}
 			<View style={styles.priorityBanner}>
 				<Feather name="zap" size={16} color={colors.primary} />
-				<Text style={styles.priorityBannerText}>
-					{isTopup
-						? "Select the shop you'll hand the cash to (or transfer to)"
-						: "Shops are sorted by best match for your print settings"}
-				</Text>
+				<Text style={styles.priorityBannerText}>Shops are sorted by best match for your print settings</Text>
 			</View>
 
 			{loading ? (

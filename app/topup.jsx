@@ -78,7 +78,7 @@ const TopUpWallet = () => {
 		showAlert("Raast functionality to be added soon!");
 	};
 
-	const handleShop = () => {
+	const handleEasyPaisa = () => {
 		router.push("/topup-amount");
 	};
 
@@ -115,13 +115,13 @@ const TopUpWallet = () => {
 					<Feather name="chevron-right" size={22} color={colors.textSecondary} />
 				</TouchableOpacity>
 
-				<TouchableOpacity style={styles.optionCard} onPress={handleShop} activeOpacity={0.8}>
+				<TouchableOpacity style={styles.optionCard} onPress={handleEasyPaisa} activeOpacity={0.8}>
 					<View style={[styles.optionIcon, { backgroundColor: "rgba(0, 217, 163, 0.12)" }]}>
-						<Feather name="shopping-bag" size={24} color={colors.primary} />
+						<Feather name="credit-card" size={24} color={colors.primary} />
 					</View>
 					<View style={styles.optionInfo}>
-						<Text style={styles.optionTitle}>Top Up through Shop</Text>
-						<Text style={styles.optionSubtitle}>Pay cash or transfer to a partner shop</Text>
+						<Text style={styles.optionTitle}>Top Up through EasyPaisa</Text>
+						<Text style={styles.optionSubtitle}>Transfer to ClickPrint and upload your payment proof</Text>
 					</View>
 					<Feather name="chevron-right" size={22} color={colors.textSecondary} />
 				</TouchableOpacity>
@@ -172,7 +172,7 @@ const TopUpWallet = () => {
 const TopupItem = ({ item, isLast, onPress }) => {
 	const statusKey = (item.status || "pending").toLowerCase();
 	const statusConfig = STATUS_CONFIG[statusKey] || { label: item.status || "Pending", color: colors.textSecondary, bg: colors.background };
-	const shopName = item.shop?.name || (typeof item.shop === "string" ? "Shop" : "Shop");
+	const shopName = item.shop?.name;
 	const date = formatDate(item.createdAt || item.date);
 
 	return (
@@ -183,13 +183,13 @@ const TopupItem = ({ item, isLast, onPress }) => {
 			<View style={styles.topupInfo}>
 				<Text style={styles.topupAmount}>Rs. {item.amount}</Text>
 				<View style={styles.topupMetaRow}>
-					<Text style={styles.topupMeta}>{shopName}</Text>
-					{date ? (
+					{shopName ? (
 						<>
-							<Text style={styles.topupDot}> • </Text>
-							<Text style={styles.topupMeta}>{date}</Text>
+							<Text style={styles.topupMeta}>{shopName}</Text>
+							{date ? <Text style={styles.topupDot}> • </Text> : null}
 						</>
 					) : null}
+					{date ? <Text style={styles.topupMeta}>{date}</Text> : null}
 				</View>
 			</View>
 			<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>

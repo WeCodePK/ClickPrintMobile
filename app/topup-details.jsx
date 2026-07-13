@@ -80,7 +80,7 @@ const TopUpDetails = () => {
 		}
 	};
 
-	const proofFile = topup?.paymentProofScreenshotFileId;
+	const proofFile = topup?.ppfid ?? topup?.paymentProofScreenshotFileId;
 	const proofFileId = proofFile?._id || (typeof proofFile === "string" ? proofFile : null);
 	const proofFileName = proofFile?.originalName || (proofFileId ? `payment-proof-${proofFileId}` : null);
 
@@ -177,7 +177,7 @@ const TopUpDetails = () => {
 							<Text style={styles.sectionTitle}>Details</Text>
 						</View>
 						<View style={styles.card}>
-							<InfoRow label="Shop" value={topup.shop?.name || "—"} />
+							{topup.shop?.name ? <InfoRow label="Shop" value={topup.shop.name} /> : null}
 							{topup.createdBy?.name ? <InfoRow label="Requested By" value={topup.createdBy.name} /> : null}
 							{topup.createdBy?.number ? <InfoRow label="Contact" value={topup.createdBy.number} /> : null}
 							<InfoRow label="Date" value={formatDateTime(topup.createdAt) || "—"} />

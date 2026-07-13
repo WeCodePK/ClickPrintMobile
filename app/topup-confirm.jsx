@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
@@ -16,46 +16,21 @@ import SecureStore from "../utils/storage";
 
 const API_BASE_URL = config.apiBaseUrl;
 
+// Top ups are collected into a single centralised account managed by ClickPrint.
+const CLICKPRINT_ACCOUNT_NAME = "ClickPrint";
+const CLICKPRINT_EASYPAISA_NUMBER = "03235400291";
+
 //----------------------------------- COMPONENTS -----------------------------------//
 
 const TopUpConfirm = () => {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
 	const params = useLocalSearchParams();
-	const shopId = params.shopId;
 	const amount = params.amount;
 
-	const [shop, setShop] = useState(null);
-	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [proof, setProof] = useState(null); // ImagePicker asset
 	const [submitting, setSubmitting] = useState(false);
-
-	useEffect(() => {
-		fetchShop();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [shopId]);
-
-	const fetchShop = async () => {
-		try {
-			setLoading(true);
-			setError(null);
-			const token = await SecureStore.getItemAsync("authToken");
-			const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
-				headers: { Authorization: `Bearer ${token}` },
-			});
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-			const data = await response.json();
-			setShop(data.data.shop);
-		} catch (err) {
-			console.error("Error fetching shop:", err);
-			setError(err.message || "Failed to load shop details. Please try again.");
-		} finally {
-			setLoading(false);
-		}
-	};
 
 	const handlePickProof = async () => {
 		try {
@@ -112,18 +87,18 @@ const TopUpConfirm = () => {
 	};
 
 	const handleConfirm = async () => {
+		if (!proof) {
+			showAlert("Payment proof required", "Please upload a screenshot of your payment to continue.");
+			return;
+		}
 		try {
 			setSubmitting(true);
 			setError(null);
 			const token = await SecureStore.getItemAsync("authToken");
 
-			let ppfid;
-			if (proof) {
-				ppfid = await uploadProof(token);
-			}
+			const ppfid = await uploadProof(token);
 
-			const payload = { amount: Number(amount), shop: shopId };
-			if (ppfid) payload.ppfid = ppfid;
+			const payload = { amount: Number(amount), ppfid };
 
 			const response = await fetch(`${API_BASE_URL}/topups`, {
 				method: "POST",
@@ -138,7 +113,7 @@ const TopUpConfirm = () => {
 				throw new Error(body.message || "Failed to submit top up request.");
 			}
 
-			showAlert("Top Up Requested", "Your top up request has been submitted. It will be credited once the shop confirms your payment.", [
+			showAlert("Top Up Requested", "Your top up request has been submitted. It will be credited once ClickPrint confirms your payment.", [
 				{ text: "OK", onPress: () => router.replace("/topup") },
 			]);
 		} catch (err) {
@@ -163,102 +138,85 @@ const TopUpConfirm = () => {
 				<View style={styles.placeholder} />
 			</View>
 
-			{loading ? (
-				<View style={styles.loadingContainer}>
-					<ActivityIndicator size="large" color={colors.primary} />
-					<Text style={styles.loadingText}>Loading shop details...</Text>
+			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+				{/* Amount summary */}
+				<View style={styles.amountCard}>
+					<Text style={styles.amountLabel}>Top Up Amount</Text>
+					<Text style={styles.amountValue}>Rs. {amount}</Text>
 				</View>
-			) : error && !shop ? (
-				<View style={styles.errorContainer}>
-					<Feather name="alert-circle" size={48} color={colors.printRequest} />
-					<Text style={styles.errorText}>{error}</Text>
-					<TouchableOpacity style={styles.retryButton} onPress={fetchShop}>
-						<Text style={styles.retryButtonText}>Retry</Text>
-					</TouchableOpacity>
-				</View>
-			) : (
-				<>
-					<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-						{/* Amount summary */}
-						<View style={styles.amountCard}>
-							<Text style={styles.amountLabel}>Top Up Amount</Text>
-							<Text style={styles.amountValue}>Rs. {amount}</Text>
+
+				{/* ClickPrint payment details */}
+				<Text style={styles.sectionTitle}>Pay to</Text>
+				<View style={styles.card}>
+					<View style={styles.shopRow}>
+						<View style={styles.shopIcon}>
+							<Feather name="credit-card" size={20} color={colors.primary} />
 						</View>
-
-						{/* Shop + payment details */}
-						<Text style={styles.sectionTitle}>Pay to</Text>
-						<View style={styles.card}>
-							<View style={styles.shopRow}>
-								<View style={styles.shopIcon}>
-									<Feather name="shopping-bag" size={20} color={colors.printRequest} />
-								</View>
-								<View style={styles.shopInfo}>
-									<Text style={styles.shopName}>{shop.name}</Text>
-									{shop.address ? <Text style={styles.shopAddress}>{shop.address}</Text> : null}
-								</View>
-							</View>
-
-							<View style={styles.divider} />
-
-							<Text style={styles.walletLabel}>EasyPaisa Number</Text>
-							{shop.walletNumber ? (
-								<Text style={styles.walletNumber}>{shop.walletNumber}</Text>
-							) : (
-								<Text style={styles.walletMissing}>Not available — please pay cash in person.</Text>
-							)}
+						<View style={styles.shopInfo}>
+							<Text style={styles.shopName}>{CLICKPRINT_ACCOUNT_NAME}</Text>
+							<Text style={styles.shopAddress}>Official EasyPaisa account</Text>
 						</View>
-
-						{/* Instructions */}
-						<View style={styles.infoBanner}>
-							<Feather name="info" size={16} color={colors.creditWallet} />
-							<Text style={styles.infoBannerText}>
-								Hand over Rs. {amount} in cash at the shop, or transfer it to the EasyPaisa number above and attach a screenshot as proof.
-							</Text>
-						</View>
-
-						{/* Payment proof (optional) */}
-						<Text style={styles.sectionTitle}>Payment Proof (optional)</Text>
-						{proof ? (
-							<View style={styles.proofCard}>
-								<Image source={{ uri: proof.uri }} style={styles.proofImage} contentFit="cover" />
-								<View style={styles.proofInfo}>
-									<Text style={styles.proofName} numberOfLines={1}>
-										{proof.fileName || "Payment screenshot"}
-									</Text>
-									<TouchableOpacity onPress={() => setProof(null)}>
-										<Text style={styles.proofRemove}>Remove</Text>
-									</TouchableOpacity>
-								</View>
-							</View>
-						) : (
-							<TouchableOpacity style={styles.uploadButton} onPress={handlePickProof}>
-								<Feather name="upload" size={20} color={colors.primary} />
-								<Text style={styles.uploadButtonText}>Upload payment screenshot</Text>
-							</TouchableOpacity>
-						)}
-
-						{error && shop ? (
-							<View style={styles.errorRow}>
-								<Feather name="alert-circle" size={16} color={colors.printRequest} />
-								<Text style={styles.inlineErrorText}>{error}</Text>
-							</View>
-						) : null}
-					</ScrollView>
-
-					<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
-						<TouchableOpacity style={[styles.confirmButton, submitting && styles.confirmButtonDisabled]} onPress={handleConfirm} disabled={submitting}>
-							{submitting ? (
-								<ActivityIndicator color={colors.cardBackground} />
-							) : (
-								<>
-									<Text style={styles.confirmButtonText}>Confirm Top Up</Text>
-									<Feather name="check" size={20} color={colors.cardBackground} />
-								</>
-							)}
-						</TouchableOpacity>
 					</View>
-				</>
-			)}
+
+					<View style={styles.divider} />
+
+					<Text style={styles.walletLabel}>EasyPaisa Number</Text>
+					<Text style={styles.walletNumber}>{CLICKPRINT_EASYPAISA_NUMBER}</Text>
+				</View>
+
+				{/* Instructions */}
+				<View style={styles.infoBanner}>
+					<Feather name="info" size={16} color={colors.creditWallet} />
+					<Text style={styles.infoBannerText}>
+						Transfer Rs. {amount} to the ClickPrint EasyPaisa number above, then attach a screenshot of the payment as proof. Your wallet is
+						credited once ClickPrint confirms the payment.
+					</Text>
+				</View>
+
+				{/* Payment proof (required) */}
+				<Text style={styles.sectionTitle}>Payment Proof</Text>
+				{proof ? (
+					<View style={styles.proofCard}>
+						<Image source={{ uri: proof.uri }} style={styles.proofImage} contentFit="cover" />
+						<View style={styles.proofInfo}>
+							<Text style={styles.proofName} numberOfLines={1}>
+								{proof.fileName || "Payment screenshot"}
+							</Text>
+							<TouchableOpacity onPress={() => setProof(null)}>
+								<Text style={styles.proofRemove}>Remove</Text>
+							</TouchableOpacity>
+						</View>
+					</View>
+				) : (
+					<>
+						<TouchableOpacity style={styles.uploadButton} onPress={handlePickProof}>
+							<Feather name="upload" size={20} color={colors.primary} />
+							<Text style={styles.uploadButtonText}>Upload payment screenshot</Text>
+						</TouchableOpacity>
+						<Text style={styles.requiredHint}>A payment screenshot is required to submit your top up.</Text>
+					</>
+				)}
+
+				{error ? (
+					<View style={styles.errorRow}>
+						<Feather name="alert-circle" size={16} color={colors.printRequest} />
+						<Text style={styles.inlineErrorText}>{error}</Text>
+					</View>
+				) : null}
+			</ScrollView>
+
+			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+				<TouchableOpacity style={[styles.confirmButton, (!proof || submitting) && styles.confirmButtonDisabled]} onPress={handleConfirm} disabled={!proof || submitting}>
+					{submitting ? (
+						<ActivityIndicator color={colors.cardBackground} />
+					) : (
+						<>
+							<Text style={styles.confirmButtonText}>Confirm Top Up</Text>
+							<Feather name="check" size={20} color={colors.cardBackground} />
+						</>
+					)}
+				</TouchableOpacity>
+			</View>
 		</SafeAreaView>
 	);
 };
@@ -293,40 +251,6 @@ const styles = StyleSheet.create({
 	},
 	placeholder: {
 		width: 40,
-	},
-	loadingContainer: {
-		flex: 1,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	loadingText: {
-		marginTop: 16,
-		fontSize: 16,
-		color: colors.textSecondary,
-	},
-	errorContainer: {
-		flex: 1,
-		justifyContent: "center",
-		alignItems: "center",
-		padding: 20,
-		gap: 16,
-	},
-	errorText: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: colors.textPrimary,
-		textAlign: "center",
-	},
-	retryButton: {
-		backgroundColor: colors.primary,
-		paddingHorizontal: 32,
-		paddingVertical: 12,
-		borderRadius: 12,
-	},
-	retryButtonText: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: colors.cardBackground,
 	},
 	scrollView: {
 		flex: 1,
@@ -387,7 +311,7 @@ const styles = StyleSheet.create({
 		width: 44,
 		height: 44,
 		borderRadius: 12,
-		backgroundColor: "#FFE8E5",
+		backgroundColor: "rgba(0, 217, 163, 0.10)",
 		justifyContent: "center",
 		alignItems: "center",
 	},
@@ -422,11 +346,6 @@ const styles = StyleSheet.create({
 		color: colors.textPrimary,
 		letterSpacing: 1,
 	},
-	walletMissing: {
-		fontSize: 14,
-		color: colors.textSecondary,
-		fontStyle: "italic",
-	},
 	infoBanner: {
 		flexDirection: "row",
 		alignItems: "flex-start",
@@ -458,6 +377,11 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		fontWeight: "600",
 		color: colors.primary,
+	},
+	requiredHint: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		marginTop: 8,
 	},
 	proofCard: {
 		flexDirection: "row",
