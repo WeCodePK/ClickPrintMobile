@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "expo start",
     "tunnel": "dotenv -- cloudflared tunnel --no-autoupdate --loglevel error run",
-    "start": "concurrently -k -n expo,tunnel -c blue,orange \"npm:expo\" \"npm:tunnel\""
+    "start": "concurrently -k -n expo,tunnel -c blue,orange \"expo start\" \"npm:tunnel\""
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
