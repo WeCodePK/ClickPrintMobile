@@ -6,7 +6,7 @@ import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../../utils/alert";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ShopsMap from "../../components/ShopsMap";
 import { colors } from "../../constants/colors";
 import { useShops } from "../../hooks/useShops";
@@ -16,6 +16,8 @@ import { getInitialRegion, toLatLng } from "../../utils/shopLocation";
 
 const ShopsPage = () => {
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
+	const tabBarHeight = 80 + Math.max(insets?.bottom || 0, 10);
 	const { shops, loading, error, reload } = useShops();
 	const [selectedShopId, setSelectedShopId] = useState(null);
 	const [viewMode, setViewMode] = useState("map"); // "map" | "list"
@@ -87,6 +89,7 @@ const ShopsPage = () => {
 								initialRegion={initialRegion}
 								onSelectShop={setSelectedShopId}
 								onDeselect={() => setSelectedShopId(null)}
+								mapPadding={{ top: 0, right: 0, bottom: tabBarHeight, left: 0 }}
 							/>
 
 							{locatedShops.length === 0 && (
@@ -127,7 +130,11 @@ const ShopsPage = () => {
 								</View>
 							</View>
 
-							<ScrollView style={styles.listScroll} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
+							<ScrollView
+								style={styles.listScroll}
+								contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 16 }]}
+								keyboardShouldPersistTaps="handled"
+							>
 								{shops.length === 0 ? (
 									<View style={styles.centerContainer}>
 										<Feather name="shopping-bag" size={40} color={colors.textSecondary} />
@@ -507,11 +514,15 @@ const styles = StyleSheet.create({
 		position: "absolute",
 		left: 16,
 		right: 16,
-		bottom: 20,
+		bottom: 2,
 		backgroundColor: colors.cardBackground,
-		borderRadius: 18,
+		borderBottomLeftRadius: 5,
+		borderBottomRightRadius: 5,
+		borderTopLeftRadius: 18,
+		borderTopRightRadius: 18,
 		padding: 16,
 		borderWidth: 1,
+		borderBottomWidth: 0,
 		borderColor: colors.borderLight,
 		shadowColor: colors.shadowMedium,
 		shadowOffset: { width: 0, height: 4 },
