@@ -66,7 +66,7 @@ const Profile = () => {
 
 
 	const handleContactSupport = async () => {
-		const email = "sohailkhankmu@gmail.com";
+		const email = "clickprintsupport@gmail.com";
 		const url = `mailto:${email}? subject=ClickPrint%20Support`;
 		try {
 			await Linking.openURL(url);

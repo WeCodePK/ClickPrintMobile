@@ -148,19 +148,6 @@ const ShopDetails = () => {
 							</View>
 						</View>
 
-						{/* EasyPaisa / Wallet Section */}
-						{shop.walletNumber ? (
-							<View style={styles.section}>
-								<View style={styles.sectionHeader}>
-									<Feather name="credit-card" size={18} color={colors.printRequest} />
-									<Text style={styles.sectionTitle}>EasyPaisa Number</Text>
-								</View>
-								<View style={styles.card}>
-									<Text style={styles.walletNumber}>{shop.walletNumber}</Text>
-								</View>
-							</View>
-						) : null}
-
 						{/* Timings Section */}
 						{shop.timings && shop.timings.length > 0 && (
 							<View style={styles.section}>
