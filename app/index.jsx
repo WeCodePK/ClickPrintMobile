@@ -4,11 +4,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { showAlert } from "../utils/alert";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -86,7 +86,7 @@ const Login = () => {
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ number: `92${phone}` }),
+				body: JSON.stringify({ number: `92${phone}`, intent: 'user' }),
 			});
 
 			if (!response.ok) {

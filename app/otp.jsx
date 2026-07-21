@@ -1,18 +1,16 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import SecureStore from "../utils/storage";
-import { useEffect, useRef, useState, useCallback } from "react";
-import { ActivityIndicator, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { showAlert } from "../utils/alert";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
 import { colors } from "../constants/colors";
-import { useAuth } from "../context/auth"
-import { BackHandler } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useAuth } from "../context/auth";
+import { showAlert } from "../utils/alert";
+import SecureStore from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -122,7 +120,7 @@ const VerifyCode = () => {
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ number: phoneNumber }),
+				body: JSON.stringify({ number: phoneNumber, intent: 'user' }),
 			});
 			const data = await response.json();
 			if (data.success) {
