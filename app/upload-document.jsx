@@ -3,13 +3,13 @@
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import SecureStore from "../utils/storage";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { fetchDraft } from "../services/fetchDraft";
+import SecureStore from "../utils/storage";
 import DocumentCard from "./components/uploadDocument/DocumentCard";
 
 //----------------------------------- CONSTANTS ------------------------------------//
@@ -40,7 +40,7 @@ const UploadDocument = () => {
 				const draft = await fetchDraft(draftId);
 				if (!active || !draft) return;
 				const existingDocs = (draft.files || []).map((f) => {
-					const originalName = f.file?.originalName || "Document";
+					const originalName = f.file?.name || "Document";
 					return {
 						// Synthetic file object so DocumentCard can show the name/extension.
 						file: { name: originalName },
@@ -146,6 +146,8 @@ const UploadDocument = () => {
 							type: doc.file.mimeType,
 						});
 					}
+					// Printable documents are converted server-side.
+					formData.append("convert", "true");
 					const fileId = await uploadDocument(formData, doc.file.name, token);
 
 					if (fileId) {
@@ -186,17 +188,17 @@ const UploadDocument = () => {
 					if (r.settings && Object.keys(r.settings).length > 0) entry.settings = r.settings;
 					return entry;
 				});
-				const patchResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-					method: "PATCH",
+				const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
+					method: "PUT",
 					headers: {
 						Authorization: `Bearer ${token}`,
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({ files }),
 				});
-				const patchData = await patchResponse.json();
-				if (!patchResponse.ok) {
-					throw new Error(patchData.message || "Failed to update draft.");
+				const updateData = await updateResponse.json();
+				if (!updateResponse.ok) {
+					throw new Error(updateData.message || "Failed to update draft.");
 				}
 				console.log("Draft updated with files:", targetDraftId);
 			} else {

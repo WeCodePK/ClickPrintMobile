@@ -4,12 +4,12 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { showAlert } from "../utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
-import SecureStore from "../utils/storage";
+import { showAlert } from "../utils/alert";
 import { documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
+import SecureStore from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -204,29 +204,23 @@ const DraftDetails = () => {
 						<Text style={styles.sectionTitle}>Cost Breakdown</Text>
 					</View>
 					<View style={styles.card}>
-						{(cost.lines || []).map((line, index) => {
-							const [code, qty, rate, lineTotal] = line;
-							return (
-								<View key={`line-${index}`} style={styles.costRow}>
-									<View style={styles.costRowLeft}>
-										<Text style={styles.costLabel}>{code}</Text>
-										<Text style={styles.costSubLabel}>{qty} × {formatCurrency(rate)}</Text>
-									</View>
-									<Text style={styles.costValue}>{formatCurrency(lineTotal)}</Text>
+						{(cost.lines || []).map((line, index) => (
+							<View key={`line-${index}`} style={styles.costRow}>
+								<View style={styles.costRowLeft}>
+									<Text style={styles.costLabel}>{line.item}</Text>
+									<Text style={styles.costSubLabel}>{line.quantity} × {formatCurrency(line.rate)}</Text>
 								</View>
-							);
-						})}
-						{(cost.extra || []).map((extra, index) => {
-							const [label, amount] = extra;
-							return (
-								<View key={`extra-${index}`} style={styles.costRow}>
-									<View style={styles.costRowLeft}>
-										<Text style={styles.costLabel}>{label}</Text>
-									</View>
-									<Text style={styles.costValue}>{formatCurrency(amount)}</Text>
+								<Text style={styles.costValue}>{formatCurrency(line.subtotal)}</Text>
+							</View>
+						))}
+						{(cost.extra || []).map((extra, index) => (
+							<View key={`extra-${index}`} style={styles.costRow}>
+								<View style={styles.costRowLeft}>
+									<Text style={styles.costLabel}>{extra.item}</Text>
 								</View>
-							);
-						})}
+								<Text style={styles.costValue}>{formatCurrency(extra.subtotal)}</Text>
+							</View>
+						))}
 						<View style={styles.totalRow}>
 							<Text style={styles.totalLabel}>Total</Text>
 							<Text style={styles.totalValue}>{formatCurrency(cost.total ?? 0)}</Text>
@@ -247,7 +241,7 @@ const DraftDetails = () => {
 									<Feather name="file" size={16} color={colors.printRequest} />
 								</View>
 								<View style={styles.fileCardHeaderText}>
-									<Text style={styles.fileLabel}>{fileEntry.file?.originalName || `File ${index + 1}`}</Text>
+									<Text style={styles.fileLabel}>{fileEntry.file?.name || `File ${index + 1}`}</Text>
 									
 								</View>
 							</View>

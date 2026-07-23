@@ -45,7 +45,7 @@ export const documentsFromDraft = (draft) => {
 	for (const f of draft?.files || []) {
 		const id = fileIdOf(f);
 		if (!seen.has(id)) {
-			seen.set(id, { fileId: id, name: f.file?.originalName || "File" });
+			seen.set(id, { fileId: id, name: f.file?.name || "File" });
 		}
 	}
 	return Array.from(seen.values());

@@ -18,7 +18,7 @@ const DraftItem = ({ draft, onPress, onDelete }) => {
 	const total = draft.cost?.total || 0;
 	const shopName = draft.shop?.name;
 
-	const primaryName = files[0]?.file?.originalName || "Document";
+	const primaryName = files[0]?.file?.name || "Document";
 	const extraCount = Math.max(0, fileCount - 1);
 	const totalPages = files.reduce((sum, f) => sum + (f.file?.numberOfPages || 0), 0);
 

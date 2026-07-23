@@ -163,7 +163,7 @@ const ShopDetails = () => {
 
 			// Step 1: Update draft with selected shop
 			const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-				method: "PATCH",
+				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${token}`,
 					"Content-Type": "application/json",

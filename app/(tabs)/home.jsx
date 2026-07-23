@@ -32,20 +32,23 @@ const HomePage = () => {
 	const fetchBalance = useCallback(async () => {
 		try {
 			const token = await SecureStore.getItemAsync("authToken");
-			const response = await fetch(`${API_BASE_URL}/profile`, {
+			const userId = await SecureStore.getItemAsync("userId");
+			if (!userId) return;
+			const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
 				headers: {
 					Authorization: `Bearer ${token}`,
 				},
 			});
 			if (response.status === 401) {
 				await SecureStore.deleteItemAsync("authToken");
+				await SecureStore.deleteItemAsync("userId");
 				await SecureStore.deleteItemAsync("name");
 				router.replace("/");
 				return;
 			}
 			const body = await response.json();
 			if (body.success) {
-				setAccountBalance(body.data.profile.balance);
+				setAccountBalance(body.data.user.balance);
 			}
 		} catch (error) {
 			console.error("Error fetching account balance:", error);
@@ -112,7 +115,7 @@ const HomePage = () => {
 	const handleDraftPress = (draft) => {
 		const documents = draft.files.map(f => ({
 			fileId: f.file?._id || f.file,
-			name: f.file?.originalName || `File`
+			name: f.file?.name || `File`
 		}));
 
 		const hasMissingSettings = draft.files.some(f => !f.settings || Object.keys(f.settings).length === 0);

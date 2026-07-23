@@ -80,9 +80,9 @@ const TopUpDetails = () => {
 		}
 	};
 
-	const proofFile = topup?.ppfid ?? topup?.paymentProofScreenshotFileId;
+	const proofFile = topup?.paymentProofFile;
 	const proofFileId = proofFile?._id || (typeof proofFile === "string" ? proofFile : null);
-	const proofFileName = proofFile?.originalName || (proofFileId ? `payment-proof-${proofFileId}` : null);
+	const proofFileName = proofFile?.name || (proofFileId ? `payment-proof-${proofFileId}` : null);
 
 	// Files require a Bearer token, so a plain URL open won't work — fetch the
 	// bytes with auth and hand them to the platform's download/open mechanism.

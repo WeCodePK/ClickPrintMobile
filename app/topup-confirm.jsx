@@ -73,6 +73,8 @@ const TopUpConfirm = () => {
 				type: proof.mimeType || "image/jpeg",
 			});
 		}
+		// Payment screenshots are stored as-is, never converted.
+		formData.append("convert", "false");
 
 		const response = await fetch(`${API_BASE_URL}/files`, {
 			method: "POST",
@@ -96,9 +98,9 @@ const TopUpConfirm = () => {
 			setError(null);
 			const token = await SecureStore.getItemAsync("authToken");
 
-			const ppfid = await uploadProof(token);
+			const paymentProofFile = await uploadProof(token);
 
-			const payload = { amount: Number(amount), ppfid };
+			const payload = { amount: Number(amount), paymentProofFile };
 
 			const response = await fetch(`${API_BASE_URL}/topups`, {
 				method: "POST",

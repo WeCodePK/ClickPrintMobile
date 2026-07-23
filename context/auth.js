@@ -13,20 +13,25 @@ export function AuthProvider({ children }) {
     (async () => {
       try {
         const token = await SecureStore.getItemAsync("authToken");
-        if (!token) {
-          setAuthState("guest");
-          return;
-        }
-        const res = await fetch(`${config.apiBaseUrl}/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
+        const userId = await SecureStore.getItemAsync("userId");
+        if (!token || !userId) {
+          // No userId means the session predates the /users/:userId routes —
+          // it can't be used to fetch the profile, so re-authenticate.
           await SecureStore.deleteItemAsync("authToken");
           setAuthState("guest");
           return;
         }
+        const res = await fetch(`${config.apiBaseUrl}/users/${userId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          await SecureStore.deleteItemAsync("authToken");
+          await SecureStore.deleteItemAsync("userId");
+          setAuthState("guest");
+          return;
+        }
         const body = await res.json();
-        const name = body?.data?.profile?.name;
+        const name = body?.data?.user?.name;
         if (name) {
           await SecureStore.setItemAsync("name", name);
           setAuthState("authed");
@@ -39,10 +44,13 @@ export function AuthProvider({ children }) {
     })();
   }, []);
 
-  const signIn = async (token, profile) => {
+  const signIn = async (token, user) => {
     await SecureStore.setItemAsync("authToken", token);
-    if (profile?.name) {
-      await SecureStore.setItemAsync("name", profile.name);
+    if (user?._id) {
+      await SecureStore.setItemAsync("userId", String(user._id));
+    }
+    if (user?.name) {
+      await SecureStore.setItemAsync("name", user.name);
       setAuthState("authed");
     } else {
       setAuthState("needs-profile");
@@ -56,6 +64,7 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     await SecureStore.deleteItemAsync("authToken");
+    await SecureStore.deleteItemAsync("userId");
     await SecureStore.deleteItemAsync("name");
     setAuthState("guest");
   };

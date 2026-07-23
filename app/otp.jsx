@@ -89,11 +89,11 @@ const VerifyCode = () => {
 			const body = await response.json();
 			if (body.success) {
 				console.log(body);
-				await signIn(body.data.token, body.data.profile)
+				await signIn(body.data.token, body.data.user)
 				console.log("OTP verified successfully for", phoneNumber);
 
-	 			if (body.data.profile && body.data.profile.name) {
-					await SecureStore.setItemAsync("name", body.data.profile.name);
+	 			if (body.data.user && body.data.user.name) {
+					await SecureStore.setItemAsync("name", body.data.user.name);
 					router.replace("/(tabs)/home");
 				} else {
 					router.replace("/profile-setup");

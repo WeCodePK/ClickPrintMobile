@@ -68,9 +68,10 @@ const EditProfile = () => {
 
         try {
             const token = await SecureStore.getItemAsync("authToken");
+            const userId = await SecureStore.getItemAsync("userId");
 
-            const response = await fetch(`${config.apiBaseUrl}/profile`, {
-                method: "PATCH",
+            const response = await fetch(`${config.apiBaseUrl}/users/${userId}`, {
+                method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,

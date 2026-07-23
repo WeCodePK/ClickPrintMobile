@@ -210,7 +210,7 @@ const PrintSettings = () => {
 			});
 
 			const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-				method: "PATCH",
+				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${token}`,
 					"Content-Type": "application/json",

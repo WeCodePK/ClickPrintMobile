@@ -63,6 +63,7 @@ const ProfileSetup = () => {
 		if (!nameIsValid) return;
 
 		const token = await SecureStore.getItemAsync("authToken");
+		const userId = await SecureStore.getItemAsync("userId");
 
 		setError("");
 		setLoading(true);
@@ -81,8 +82,8 @@ const ProfileSetup = () => {
 		]).start();
 
 		try {
-			const response = await fetch(`${API_BASE_URL}/profile`, {
-				method: "PATCH",
+			const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+				method: "PUT",
 				headers: {
 					"Content-Type": "application/json",
 					Authorization: `Bearer ${token}`,
@@ -95,7 +96,7 @@ const ProfileSetup = () => {
 			const data = await response.json();
 
 			if (response.ok) {
-				await completeProfile(data.data.profile.name);
+				await completeProfile(data.data.user.name);
 				setSuccess(true);
 
 				Animated.timing(checkmarkAnim, {
