@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "expo start",
     "tunnel": "dotenv -- cloudflared tunnel --no-autoupdate --loglevel error run",
-    "start": "concurrently -k -n expo,tunnel -c blue,orange \"expo start\" \"npm:tunnel\""
+    "start": "concurrently -k -n expo,tunnel -c blue,orange \"expo start\" \"npm:tunnel\"",
+    "deploy": "npx expo export -p web && wrangler deploy",
+    "preview": "npx expo export -p web && wrangler dev"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -53,7 +55,8 @@
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "wrangler": "^4.114.0"
   },
   "overrides": {
     "react-native": "$react-native"
