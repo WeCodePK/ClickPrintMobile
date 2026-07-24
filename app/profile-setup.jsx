@@ -1,19 +1,21 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import SecureStore from "../utils/storage";
-import { useEffect, useRef, useState } from "react";
-import { Animated, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { useAuth } from "../context/auth";
-import { getNameHint, isValidName } from "../utils/validateName";
+import { showAlert } from "../utils/alert";
+import SecureStore from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
 const API_BASE_URL = config.apiBaseUrl;
+const KEYBOARD_EXTRA_OFFSET = 20;
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -22,233 +24,121 @@ const ProfileSetup = () => {
 	const { completeProfile } = useAuth();
 	const [userName, setUserName] = useState("");
 	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState("");
-	const [success, setSuccess] = useState(false);
-
-
-	// Animations
-	const scaleAnim = useRef(new Animated.Value(0)).current;
-	const opacityAnim = useRef(new Animated.Value(0)).current;
-	const slideAnim = useRef(new Animated.Value(50)).current;
-	const buttonScaleAnim = useRef(new Animated.Value(1)).current;
-	const checkmarkAnim = useRef(new Animated.Value(0)).current;
-
-
-	const trimedName = userName.trim();
-	const nameHint = getNameHint(userName);
-	const nameIsValid = isValidName(userName);
+	const [keyboardOffset, setKeyboardOffset] = useState(0);
 
 	useEffect(() => {
-		// Entrance animation
-		Animated.parallel([
-			Animated.timing(scaleAnim, {
-				toValue: 1,
-				duration: 600,
-				useNativeDriver: true,
-			}),
-			Animated.timing(opacityAnim, {
-				toValue: 1,
-				duration: 600,
-				useNativeDriver: true,
-			}),
-			Animated.timing(slideAnim, {
-				toValue: 0,
-				duration: 600,
-				useNativeDriver: true,
-			}),
-		]).start();
-	}, [opacityAnim, scaleAnim, slideAnim]);
+		if (Platform.OS === "web") {
+			const viewport = typeof window !== "undefined" ? window.visualViewport : null;
+			if (!viewport) return;
 
-	const handleSubmit = async () => {
-		if (!nameIsValid) return;
+			const handleViewportChange = () => {
+				const offset = window.innerHeight - viewport.height - viewport.offsetTop;
+				setKeyboardOffset(offset > 0 ? offset + KEYBOARD_EXTRA_OFFSET : 0);
+			};
 
-		const token = await SecureStore.getItemAsync("authToken");
-		const userId = await SecureStore.getItemAsync("userId");
+			viewport.addEventListener("resize", handleViewportChange);
+			viewport.addEventListener("scroll", handleViewportChange);
 
-		setError("");
+			return () => {
+				viewport.removeEventListener("resize", handleViewportChange);
+				viewport.removeEventListener("scroll", handleViewportChange);
+			};
+		}
+
+		const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+		const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+		const showSub = Keyboard.addListener(showEvent, (e) => {
+			setKeyboardOffset(e.endCoordinates.height + KEYBOARD_EXTRA_OFFSET);
+		});
+		const hideSub = Keyboard.addListener(hideEvent, () => {
+			setKeyboardOffset(0);
+		});
+
+		return () => {
+			showSub.remove();
+			hideSub.remove();
+		};
+	}, []);
+
+	const trimmedName = userName.trim();
+
+	const handleContinue = async () => {
+		if (!trimmedName || loading) return;
+
 		setLoading(true);
 
-		Animated.sequence([
-			Animated.timing(buttonScaleAnim, {
-				toValue: 0.95,
-				duration: 100,
-				useNativeDriver: true,
-			}),
-			Animated.timing(buttonScaleAnim, {
-				toValue: 1,
-				duration: 100,
-				useNativeDriver: true,
-			}),
-		]).start();
-
 		try {
+			const token = await SecureStore.getItemAsync("authToken");
+			const userId = await SecureStore.getItemAsync("userId");
+
 			const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
 				method: "PUT",
 				headers: {
 					"Content-Type": "application/json",
 					Authorization: `Bearer ${token}`,
 				},
-				body: JSON.stringify({
-					name: trimedName,
-				}),
+				body: JSON.stringify({ name: trimmedName }),
 			});
 
 			const data = await response.json();
 
 			if (response.ok) {
 				await completeProfile(data.data.user.name);
-				setSuccess(true);
-
-				Animated.timing(checkmarkAnim, {
-					toValue: 1,
-					duration: 600,
-					useNativeDriver: true,
-				}).start();
-
-				setTimeout(() => {
-					router.replace("/(tabs)/home");
-				}, 1500);
+				router.replace("/(tabs)/home");
 			} else {
-				setError(data.message || "Failed to save profile");
-				setLoading(false);
+				showAlert("Error", data.message || "Failed to save profile. Please try again.");
 			}
-		} catch (err) {
-			console.error("Profile setup error:", err);
-			setError("Connection error. Please check your internet and try again.");
+		} catch (error) {
+			console.error("Profile setup error:", error);
+			if (error.message === "Network request failed") {
+				showAlert("No Internet", "Please check your internet connection and try again.");
+			} else {
+				showAlert("Error", "An unexpected error occurred. Please try again.");
+			}
+		} finally {
 			setLoading(false);
 		}
 	};
 
-	const handleInputChange = (text) => {
-		setUserName(text);
-		if (error) setError("");
-	};
-
-	const inputScale = slideAnim.interpolate({
-		inputRange: [0, 50],
-		outputRange: [1, 0.95],
-	});
-
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
-		<SafeAreaView style={styles.container}>
-			<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flexContainer}>
-				<Animated.View
-					style={[
-						styles.content,
-						{
-							opacity: opacityAnim,
-							transform: [{ scale: scaleAnim }, { translateY: slideAnim }],
-						},
-					]}
-				>
-					{!success ? (
-						<>
-							{/* Header Section */}
-							<View style={styles.headerSection}>
-								<View style={styles.avatarPlaceholder}>
-									<MaterialCommunityIcons name="account-circle" size={80} color={colors.primary} />
-								</View>
+		<View style={{ flex: 1, backgroundColor: colors.background }}>
+			<DismissKeyboard>
+				<SafeAreaView style={[styles.container, { paddingBottom: keyboardOffset }]}>
+					<Text style={styles.heading}>Let&apos;s get started!</Text>
+					<Text style={styles.subHeading}>What would you like us to call you?</Text>
 
-								<Text style={styles.title}>Let&apos;s get started</Text>
-								<Text style={styles.subtitle}>What would you like us to call you?</Text>
-							</View>
+					<View style={styles.inputBox}>
+						<TextInput
+							style={styles.input}
+							placeholder="Enter your name"
+							placeholderTextColor="#999"
+							value={userName}
+							onChangeText={setUserName}
+							editable={!loading}
+							autoFocus
+						/>
+					</View>
 
-							{/* Input Section */}
-							<View style={styles.inputSection}>
-								<Animated.View style={[styles.inputWrapper, { transform: [{ scale: inputScale }] }]}>
-									<View style={[styles.inputContainer, (error || nameHint) && styles.inputContainerError]}>
-										<MaterialCommunityIcons
-											name="pencil"
-											size={20}
-											color={error || nameHint ? "#FF4F00" : colors.primary}
-											style={styles.inputIcon}
-										/>
-										<TextInput
-											style={styles.textInput}
-											placeholder="Enter your name"
-											placeholderTextColor={colors.textSecondary}
-											value={userName}
-											onChangeText={handleInputChange}
-											editable={!loading}
-											maxLength={20}
-										/>
-									</View>
-								</Animated.View>
-
-								{error ? (
-									<Animated.View style={{ opacity: opacityAnim }}>
-										<Text style={styles.errorText}>{error}</Text>
-									</Animated.View>
-								) : nameHint ? (
-									<Text style={styles.errorText}>{nameHint}</Text>
-								) : (
-									<Text style={styles.helperText}>
-										{trimedName.length}/20 characters (5-20 required)
-									</Text>
-								)}
-							</View>
-
-							{/* Submit Button */}
-							<Animated.View
-								style={{
-									transform: [{ scale: buttonScaleAnim }],
-								}}
-							>
-								<TouchableOpacity
-									style={[
-										styles.submitButton,
-										(loading || !nameIsValid) && styles.submitButtonDisabled,
-									]}
-									onPress={handleSubmit}
-									disabled={loading || !nameIsValid}
-								>
-									{loading ? (
-										<View style={styles.loadingContainer}>
-											<Text style={styles.submitButtonText}>Saving...</Text>
-										</View>
-									) : (
-										<View style={styles.buttonContent}>
-											<Text style={styles.submitButtonText}>Continue</Text>
-											<MaterialCommunityIcons
-												name="arrow-right"
-												size={20}
-												color="#fff"
-												style={{ marginLeft: 10 }}
-											/>
-										</View>
-									)}
-								</TouchableOpacity>
-							</Animated.View>
-
-							{/* Bottom accent */}
-							<View style={styles.bottomAccent} />
-						</>
-					) : (
-						<View style={styles.successContainer}>
-							<Animated.View
-								style={{
-									opacity: checkmarkAnim,
-									transform: [
-										{
-											scale: checkmarkAnim.interpolate({
-												inputRange: [0, 0.5, 1],
-												outputRange: [0, 1.2, 1],
-											}),
-										},
-									],
-								}}
-							>
-								<MaterialCommunityIcons name="check-circle" size={100} color={colors.primary} />
-							</Animated.View>
-							<Text style={styles.successTitle}>Welcome, {userName}!</Text>
-							<Text style={styles.successSubtitle}>Profile setup complete</Text>
-						</View>
-					)}
-				</Animated.View>
-			</KeyboardAvoidingView>
-		</SafeAreaView>
+					<TouchableOpacity
+						style={[styles.button, (!trimmedName || loading) && styles.buttonDisabled]}
+						disabled={!trimmedName || loading}
+						onPress={handleContinue}
+					>
+						{loading ? (
+							<ActivityIndicator color="#fff" />
+						) : (
+							<>
+								<Text style={styles.buttonText}>Continue</Text>
+								<Ionicons name="arrow-forward" size={19} color={"#fff"} />
+							</>
+						)}
+					</TouchableOpacity>
+				</SafeAreaView>
+			</DismissKeyboard>
+		</View>
 	);
 };
 
@@ -258,144 +148,58 @@ const styles = StyleSheet.create({
 	container: {
 		flex: 1,
 		backgroundColor: colors.background,
-	},
-	flexContainer: {
-		flex: 1,
-	},
-	content: {
-		flex: 1,
-		paddingHorizontal: 24,
-		justifyContent: "space-between",
-		paddingVertical: 20,
-	},
-	headerSection: {
-		alignItems: "center",
-		marginTop: 30,
-		marginBottom: 50,
-	},
-	avatarPlaceholder: {
-		marginBottom: 30,
-	},
-	title: {
-		fontSize: 32,
-		fontWeight: "700",
-		color: colors.textPrimary,
+		paddingHorizontal: 20,
+		justifyContent: "center",
 		marginBottom: 10,
-		textAlign: "center",
 	},
-	subtitle: {
-		fontSize: 16,
-		color: colors.textSecondary,
-		textAlign: "center",
-		lineHeight: 22,
+	heading: {
+		fontSize: 28,
+		color: colors.textPrimary,
+		fontWeight: "bold",
+		marginBottom: 10,
+		marginTop: 100,
+		marginLeft: 5,
 	},
-	inputSection: {
-		marginBottom: 30,
-	},
-	inputWrapper: {
-		marginBottom: 12,
-	},
-	inputContainer: {
-		flexDirection: "row",
-		alignItems: "center",
-		backgroundColor: colors.cardBackground,
-		borderRadius: 14,
-		paddingHorizontal: 16,
-		paddingVertical: 12,
-		borderWidth: 2,
-		borderColor: colors.borderLight,
-		shadowColor: colors.shadowPrimary,
-		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 0.1,
-		shadowRadius: 8,
-		elevation: 3,
-	},
-	inputContainerError: {
-		borderColor: "#FF4F00",
-		shadowColor: "#FF4F00",
-		shadowOpacity: 0.15,
-	},
-	inputIcon: {
-		marginRight: 12,
-	},
-	textInput: {
-		flex: 1,
+	subHeading: {
 		fontSize: 16,
 		color: colors.textPrimary,
-		fontWeight: "500",
-		paddingVertical: 8,
+		marginBottom: 40,
+		marginTop: 5,
+		marginLeft: 5,
+	},
+	inputBox: {
+		backgroundColor: "rgb(236, 228, 228)",
+		height: 40,
+		borderRadius: 25,
+		paddingHorizontal: 15,
+		justifyContent: "center",
+		marginBottom: 30,
+	},
+	input: {
+		fontSize: 16,
+		color: "#000",
 		// Remove the browser's default focus outline on web (renders as a
-		// solid rectangle around the input). No-op on native.
+		// rectangle inside the pill-shaped input). No-op on native.
 		...Platform.select({ web: { outlineStyle: "none" } }),
 	},
-	errorText: {
-		fontSize: 14,
-		color: "#FF4F00",
-		fontWeight: "600",
-		marginLeft: 4,
-	},
-	helperText: {
-		fontSize: 13,
-		color: colors.textSecondary,
-		marginLeft: 4,
-	},
-	submitButton: {
-		backgroundColor: colors.primary,
-		borderRadius: 14,
-		paddingVertical: 16,
-		paddingHorizontal: 24,
+	button: {
+		flexDirection: "row",
 		justifyContent: "center",
 		alignItems: "center",
-		shadowColor: colors.shadowPrimary,
-		shadowOffset: { width: 0, height: 6 },
-		shadowOpacity: 0.3,
-		shadowRadius: 12,
-		elevation: 6,
-		marginBottom: 20,
-	},
-	submitButtonDisabled: {
-		backgroundColor: colors.navInactive || "#858b96",
-		elevation: 0,
-	},
-	buttonContent: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-	},
-	submitButtonText: {
-		fontSize: 16,
-		fontWeight: "700",
-		color: "#fff",
-	},
-	loadingContainer: {
-		flexDirection: "row",
-		alignItems: "center",
-	},
-	bottomAccent: {
-		height: 4,
-		backgroundColor: colors.primary,
-		borderRadius: 2,
+		backgroundColor: "#FF4F00",
+		paddingVertical: 15,
+		borderRadius: 10,
 		marginTop: "auto",
-		opacity: 0.3,
-		marginBottom: 10,
 	},
-	successContainer: {
-		flex: 1,
-		justifyContent: "center",
-		alignItems: "center",
+	buttonDisabled: {
+		backgroundColor: colors.navInactive,
+		opacity: 1,
 	},
-	successTitle: {
-		fontSize: 28,
-		fontWeight: "700",
-		color: colors.textPrimary,
-		marginTop: 24,
-		textAlign: "center",
-	},
-	successSubtitle: {
+	buttonText: {
+		color: "#fff",
 		fontSize: 16,
-		color: colors.textSecondary,
-		marginTop: 10,
-		textAlign: "center",
+		marginRight: 10,
+		fontWeight: "bold",
 	},
 });
 

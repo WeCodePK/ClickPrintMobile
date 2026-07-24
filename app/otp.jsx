@@ -3,7 +3,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, BackHandler, Keyboard, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
@@ -16,6 +16,20 @@ import SecureStore from "../utils/storage";
 
 const API_BASE_URL = config.apiBaseUrl;
 
+const KEYBOARD_EXTRA_OFFSET = 20;
+const DEFAULT_CODE_LENGTH = 5;
+const DEFAULT_RESEND_MS = 30000;
+
+const parseCodeLength = (value) => {
+	const parsed = parseInt(value, 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CODE_LENGTH;
+};
+
+const parseResendSeconds = (value) => {
+	const parsed = parseInt(value, 10);
+	return Math.round((Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_RESEND_MS) / 1000);
+};
+
 //----------------------------------- COMPONENTS -----------------------------------//
 
 const VerifyCode = () => {
@@ -23,14 +37,51 @@ const VerifyCode = () => {
 	const params = useLocalSearchParams();
 	const phoneNumber = params.phone;
 
-	const [codes, setCodes] = useState(["", "", "", "", ""]);
-	const [timer, setTimer] = useState(90);
+	const [codeLength, setCodeLength] = useState(() => parseCodeLength(params.codeLength));
+	const [codes, setCodes] = useState(() => Array(parseCodeLength(params.codeLength)).fill(""));
+	const [timer, setTimer] = useState(() => parseResendSeconds(params.resendInMs));
 	const [showErrorModal, setShowErrorModal] = useState(false);
 	const [verifying, setVerifying] = useState(false);
 	const [resending, setResending] = useState(false);
+	const [keyboardOffset, setKeyboardOffset] = useState(0);
 	const inputRefs = useRef([]);
 
 	const { signIn } = useAuth();
+
+	useEffect(() => {
+		if (Platform.OS === "web") {
+			const viewport = typeof window !== "undefined" ? window.visualViewport : null;
+			if (!viewport) return;
+
+			const handleViewportChange = () => {
+				const offset = window.innerHeight - viewport.height - viewport.offsetTop;
+				setKeyboardOffset(offset > 0 ? offset + KEYBOARD_EXTRA_OFFSET : 0);
+			};
+
+			viewport.addEventListener("resize", handleViewportChange);
+			viewport.addEventListener("scroll", handleViewportChange);
+
+			return () => {
+				viewport.removeEventListener("resize", handleViewportChange);
+				viewport.removeEventListener("scroll", handleViewportChange);
+			};
+		}
+
+		const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+		const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+		const showSub = Keyboard.addListener(showEvent, (e) => {
+			setKeyboardOffset(e.endCoordinates.height + KEYBOARD_EXTRA_OFFSET);
+		});
+		const hideSub = Keyboard.addListener(hideEvent, () => {
+			setKeyboardOffset(0);
+		});
+
+		return () => {
+			showSub.remove();
+			hideSub.remove();
+		};
+	}, []);
 
 	useEffect(() => {
 		if (timer > 0) {
@@ -44,14 +95,14 @@ const VerifyCode = () => {
 	const handleCodeChange = (value, index) => {
 		if (value.length > 1) {
 
-			const digits = value.replace(/\D/g, "").slice(0, 5 - index);
+			const digits = value.replace(/\D/g, "").slice(0, codeLength - index);
 			if (!digits) return;
 			const newCodes = [...codes];
 			digits.split("").forEach((digit, i) => {
 				newCodes[index + i] = digit;
 			});
 			setCodes(newCodes);
-			const lastFilled = Math.min(index + digits.length - 1, 4);
+			const lastFilled = Math.min(index + digits.length - 1, codeLength - 1);
 			inputRefs.current[lastFilled]?.focus();
 			if (newCodes.every((code) => code !== "") && !verifying) {
 				handleVerify(newCodes.join(""));
@@ -61,7 +112,7 @@ const VerifyCode = () => {
 		const newCodes = [...codes];
 		newCodes[index] = value;
 		setCodes(newCodes);
-		if (value && index < 4) {
+		if (value && index < codeLength - 1) {
 			inputRefs.current[index + 1]?.focus();
 		}
 		if (newCodes.every((code) => code !== "") && !verifying) {
@@ -124,8 +175,11 @@ const VerifyCode = () => {
 			});
 			const data = await response.json();
 			if (data.success) {
-				setCodes(["", "", "", "", ""]);
-				setTimer(30);
+				const otpConfig = data.data?.config || {};
+				const newLength = otpConfig.codeLength != null ? parseCodeLength(otpConfig.codeLength) : codeLength;
+				setCodeLength(newLength);
+				setCodes(Array(newLength).fill(""));
+				setTimer(parseResendSeconds(otpConfig.resendInMs != null ? otpConfig.resendInMs : params.resendInMs));
 				inputRefs.current[0]?.focus();
 			} else {
 				showAlert("Error", "Failed to send OTP. Please try again.");
@@ -141,12 +195,12 @@ const VerifyCode = () => {
 
 	const handleClearAndRetry = () => {
 		setShowErrorModal(false);
-		setCodes(["", "", "", "", ""]);
+		setCodes(Array(codeLength).fill(""));
 		inputRefs.current[0]?.focus();
 	};
 
 	const handleBack = () => {
-		setCodes(["", "", "", "", ""]);
+		setCodes(Array(codeLength).fill(""));
 		router.replace("/");
 	};
 
@@ -172,7 +226,7 @@ const VerifyCode = () => {
 
 	return (
 		<DismissKeyboard>
-		<SafeAreaView style={styles.container}>
+		<SafeAreaView style={[styles.container, { paddingBottom: keyboardOffset }]}>
 			<TouchableOpacity style={styles.backButton} onPress={handleBack}>
 				<Ionicons name="arrow-back" size={24} />
 			</TouchableOpacity>
@@ -180,11 +234,7 @@ const VerifyCode = () => {
 			<Text style={styles.title}>Enter verification code</Text>
 
 			<View style={styles.instructionContainer}>
-				<Text style={styles.instructionText}>We&apos;ve sent it to +{phoneNumber} via</Text>
-				<View style={styles.whatsappContainer}>
-					<Ionicons name="logo-whatsapp" size={18} color="#25D366" />
-					<Text style={styles.whatsappText}>Whatsapp</Text>
-				</View>
+				<Text style={styles.instructionText}>We&apos;ve sent it to +{phoneNumber} via SMS</Text>
 			</View>
 
 
@@ -275,16 +325,6 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 		color: colors.textPrimary,
 		marginRight: 5,
-	},
-	whatsappContainer: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 5,
-	},
-	whatsappText: {
-		fontSize: 16,
-		color: colors.textPrimary,
-		fontWeight: "600",
 	},
 	codeContainer: {
 		flexDirection: "row",

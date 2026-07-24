@@ -98,7 +98,15 @@ const Login = () => {
 			const data = await response.json();
 			console.log(data.message);
 			if (data.success) {
-				router.replace({ pathname: "/otp", params: { phone: `92${phone}` } });
+				const otpConfig = data.data?.config || {};
+				router.replace({
+					pathname: "/otp",
+					params: {
+						phone: `92${phone}`,
+						codeLength: otpConfig.codeLength,
+						resendInMs: otpConfig.resendInMs,
+					},
+				});
 			} else {
 				showAlert("Error", "Failed to send OTP. Please try again.");
 				console.error("OTP request failed:", data.message);

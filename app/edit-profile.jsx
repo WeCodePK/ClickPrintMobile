@@ -17,7 +17,6 @@ import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
-import { getNameHint, isValidName } from "../utils/validateName";
 
 const EditProfile = () => {
     const router = useRouter();
@@ -58,11 +57,9 @@ const EditProfile = () => {
 
     const trimmedName = name.trim();
     const hasChanged = trimmedName !== originalName.trim();
-    const nameHint = getNameHint(name);
-    const nameIsValid = isValidName(name);
 
     const handleSave = async () => {
-        if (!nameIsValid || !hasChanged) return;
+        if (!trimmedName || !hasChanged) return;
 
         setSaving(true);
 
@@ -142,31 +139,22 @@ const EditProfile = () => {
                     </Text>
 
                     <TextInput
-                        style={[styles.input, nameHint && styles.inputError]}
+                        style={styles.input}
                         placeholder="Enter your name"
                         placeholderTextColor={colors.textSecondary}
                         value={name}
                         onChangeText={setName}
                         autoCapitalize="words"
-                        maxLength={20}
                     />
-
-                    {nameHint ? (
-                        <Text style={styles.errorText}>{nameHint}</Text>
-                    ) : (
-                        <Text style={styles.helperText}>
-                            {trimmedName.length}/20 characters (5-20 required)
-                        </Text>
-                    )}
                 </View>
 
                 <TouchableOpacity
                     style={[
                         styles.saveButton,
-                        (!nameIsValid || saving || !hasChanged) &&
+                        (!trimmedName || saving || !hasChanged) &&
                         styles.saveButtonDisabled,
                     ]}
-                    disabled={!nameIsValid || saving || !hasChanged}
+                    disabled={!trimmedName || saving || !hasChanged}
                     onPress={handleSave}
                 >
                     {saving ? (
@@ -237,25 +225,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         fontSize: 16,
         color: colors.textPrimary,
-    },
-
-    inputError: {
-        borderColor: "#FF4F00",
-    },
-
-    errorText: {
-        fontSize: 14,
-        color: "#FF4F00",
-        fontWeight: "600",
-        marginTop: 8,
-        marginLeft: 4,
-    },
-
-    helperText: {
-        fontSize: 13,
-        color: colors.textSecondary,
-        marginTop: 8,
-        marginLeft: 4,
     },
 
     saveButton: {
