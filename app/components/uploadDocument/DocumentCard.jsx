@@ -35,8 +35,11 @@ const DocumentCard = ({ doc, index, onRemove }) => {
 						<Feather name="check-circle" size={20} color={colors.primary} />
 					</View>
 				) : doc.status === "failed" ? (
-					<View style={styles.statusContainer}>
+					<View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
 						<Text style={styles.failedText}>Failed</Text>
+						<TouchableOpacity style={styles.removeCardButton} onPress={() => onRemove(index)}>
+							<Feather name="x" size={18} color={colors.printRequest} />
+						</TouchableOpacity>
 					</View>
 				) : (
 					<TouchableOpacity style={styles.removeCardButton} onPress={() => onRemove(index)}>

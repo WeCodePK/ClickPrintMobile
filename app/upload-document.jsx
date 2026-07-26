@@ -104,7 +104,19 @@ const UploadDocument = () => {
 	};
 
 	const handleRemoveDocument = (index) => {
-		setDocuments((prev) => prev.filter((_, i) => i !== index));
+		const removedDoc = documents[index];
+		const newDocs = documents.filter((_, i) => i !== index);
+		setDocuments(newDocs);
+
+		if (removedDoc?.status === "failed") {
+			const remainingFailed = newDocs.filter(d => d.status === "failed");
+			if (remainingFailed.length === 0) {
+				setError(null);
+			} else {
+				const failedNames = remainingFailed.map(d => d.file?.name || d.name || "Document");
+				setError(`${remainingFailed.length} document(s) failed to upload: ${failedNames.join(", ")}. Please try again.`);
+			}
+		}
 	};
 
 	const handleContinue = async () => {
