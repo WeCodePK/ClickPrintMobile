@@ -11,6 +11,10 @@ import ShopsMap from "../../components/ShopsMap";
 import { colors } from "../../constants/colors";
 import { useShops } from "../../hooks/useShops";
 import { getInitialRegion, toLatLng } from "../../utils/shopLocation";
+import config from "../../config/config"
+
+
+const API_BASE_URL = config.apiBaseUrl;
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -194,8 +198,8 @@ const ViewToggle = ({ mode, onChange }) => {
 const ShopListItem = ({ shop, onPress, onViewLocation }) => {
 	return (
 		<TouchableOpacity style={styles.shopCard} onPress={onPress} activeOpacity={0.7}>
-			{shop.imageUrl ? (
-				<Image source={{ uri: shop.imageUrl }} style={styles.shopImage} contentFit="cover" transition={200} />
+			{shop.imageFile ? (
+				<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.shopImage} contentFit="cover" transition={200} />
 			) : (
 				<View style={styles.shopIconContainer}>
 					<Feather name="shopping-bag" size={24} color={colors.printRequest} />

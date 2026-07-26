@@ -137,6 +137,7 @@ const ShopDetails = () => {
 			}
 
 			const data = await response.json();
+			console.log("shops respose", data.data)
 			setShops(data.data?.shops || []);
 		} catch (err) {
 			console.error("Error fetching shops:", err);
@@ -313,8 +314,8 @@ const ShopCard = ({ shop, isSelected, onSelect }) => {
 	return (
 		<TouchableOpacity style={[styles.shopCard, isSelected && styles.shopCardSelected]} onPress={onSelect} activeOpacity={0.7}>
 			<View style={[styles.shopIcon, isSelected && styles.shopIconSelected]}>
-				{shop.imageUrl ? (
-					<Image source={{ uri: shop.imageUrl }} style={styles.shopImage} />
+				{shop.imageFile ? (
+					<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.shopImage} />
 				) : (
 					<Feather name="shopping-bag" size={24} color={isSelected ? colors.printRequest : colors.textSecondary} />
 				)}

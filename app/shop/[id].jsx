@@ -78,7 +78,7 @@ const ShopDetails = () => {
 			}
 
 			const data = await response.json();
-			console.log("Shop details:", data);			
+			console.log("Shop details:", data.data.shop);			
 			setShop(data.data.shop);
 		} catch (err) {
 			console.error("Error fetching shop details:", err);
@@ -121,8 +121,8 @@ const ShopDetails = () => {
 					<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 						{/* Shop Header Card */}
 						<View style={styles.shopHeaderCard}>
-							{shop.imageUrl ? (
-								<Image source={{ uri: shop.imageUrl }} style={styles.shopImage} contentFit="cover" transition={200} />
+							{shop.imageFile ? (
+								<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.shopImage} contentFit="cover" transition={200} />
 							) : (
 								<View style={styles.shopIconContainer}>
 									<Feather name="shopping-bag" size={32} color={colors.printRequest} />
