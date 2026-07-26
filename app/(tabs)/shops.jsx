@@ -250,8 +250,8 @@ const ShopCallout = ({ shop, onClose, onMoreDetails, onDirections }) => {
 			</TouchableOpacity>
 
 			<View style={styles.calloutTop}>
-				{shop.imageUrl ? (
-					<Image source={{ uri: shop.imageUrl }} style={styles.calloutImage} contentFit="cover" transition={200} />
+				{shop.imageFile ? (
+					<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.calloutImage} contentFit="cover" transition={200} />
 				) : (
 					<View style={styles.calloutIcon}>
 						<Feather name="shopping-bag" size={22} color={colors.printRequest} />

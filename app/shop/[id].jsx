@@ -33,6 +33,7 @@ const ShopDetails = () => {
 	const shopId = params.id || params.shopId;
 
 	const [shop, setShop] = useState(null);
+	const [services, setServices] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 
@@ -67,19 +68,28 @@ const ShopDetails = () => {
 			setLoading(true);
 			setError(null);
 			const token = await SecureStore.getItemAsync("authToken");
-			const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-				},
-			});
+			const [shopResponse, servicesResponse] = await Promise.all([
+				fetch(`${API_BASE_URL}/shops/${shopId}`, {
+					headers: { Authorization: `Bearer ${token}` },
+				}),
+				fetch(`${API_BASE_URL}/services/${shopId}`, {
+					headers: { Authorization: `Bearer ${token}` },
+				})
+			]);
 
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
+			if (!shopResponse.ok) {
+				throw new Error(`HTTP error! status: ${shopResponse.status}`);
 			}
 
-			const data = await response.json();
-			console.log("Shop details:", data.data.shop);			
-			setShop(data.data.shop);
+			const shopData = await shopResponse.json();
+			setShop(shopData.data.shop);
+
+			if (servicesResponse.ok) {
+				const servicesData = await servicesResponse.json();
+				setServices(servicesData.data?.services || []);
+			} else {
+				setServices([]);
+			}
 		} catch (err) {
 			console.error("Error fetching shop details:", err);
 			setError(err.message || "Failed to load shop details. Please try again.");
@@ -172,13 +182,13 @@ const ShopDetails = () => {
 								<Text style={styles.sectionTitle}>Capabilities</Text>
 							</View>
 							<View style={styles.card}>
-								{!shop.capabilities || shop.capabilities.length === 0 ? (
+								{services.length === 0 ? (
 									<Text style={styles.emptyText}>No capabilities listed</Text>
 								) : (
-									shop.capabilities.map((cap, index) => (
-										<View key={index} style={[styles.capabilityRow, index < shop.capabilities.length - 1 && styles.capabilityRowBorder]}>
-											<View style={styles.capabilityDot} />
-											<Text style={styles.capabilityText}>{CAPABILITY_LABELS[cap] || cap}</Text>
+									services.map((service, index) => (
+										<View key={service._id} style={[styles.capabilityRow, index < services.length - 1 && styles.capabilityRowBorder]}>
+											
+											<Text style={styles.capabilityText}>{service.name}</Text>
 										</View>
 									))
 								)}
@@ -191,21 +201,21 @@ const ShopDetails = () => {
 								<Feather name="tag" size={18} color={colors.printRequest} />
 								<Text style={styles.sectionTitle}>Pricing</Text>
 							</View>
-							{!shop.prices || shop.prices.length === 0 ? (
-								<View style={styles.card}>
+							<View style={styles.card}>
+								{services.length === 0 ? (
 									<Text style={styles.emptyText}>No pricing information available</Text>
-								</View>
-							) : (
-								shop.prices.map((price, index) => (
-									<View key={price._id} style={[styles.priceCard, index < shop.prices.length - 1 && styles.priceCardSpacing]}>
-										<Text style={styles.priceName}>{price.name}</Text>
-										<View style={styles.priceRow}>
-											<Text style={styles.priceLabel}>Rate</Text>
-											<Text style={styles.priceValue}>Rs. {price.rate}</Text>
+								) : (
+									services.map((service, index) => (
+										<View key={service._id} style={[styles.capabilityRow, index < services.length - 1 && styles.capabilityRowBorder]}>
+											
+											<Text style={styles.capabilityText}>
+												{service.keys.pageType}, {service.keys.color ? "Color" : "Black & White"}, {service.keys.sidedness ? "Double Sided" : "Single Sided"}
+											</Text>
+											<Text style={styles.priceValue}>Rs. {service.rate}</Text>
 										</View>
-									</View>
-								))
-							)}
+									))
+								)}
+							</View>
 						</View>
 					</ScrollView>
 				</>
@@ -409,18 +419,14 @@ const styles = StyleSheet.create({
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
 	},
-	capabilityDot: {
-		width: 8,
-		height: 8,
-		borderRadius: 4,
-		backgroundColor: colors.printRequest,
-	},
 	capabilityText: {
 		fontSize: 14,
 		color: colors.textPrimary,
 		flex: 1,
 	},
 	priceCard: {
+		flexDirection: "row",
+		justifyContent: "space-between",
 		backgroundColor: colors.cardBackground,
 		borderRadius: 16,
 		padding: 16,
