@@ -14,6 +14,8 @@ import { colors } from "../../constants/colors";
 
 const API_BASE_URL = config.apiBaseUrl;
 
+const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
 const CAPABILITY_LABELS = {
 	bw: "Black & White Printing",
 	color: "Color Printing",
@@ -166,11 +168,15 @@ const ShopDetails = () => {
 									<Text style={styles.sectionTitle}>Timings</Text>
 								</View>
 								<View style={styles.card}>
-									{shop.timings.map((timing, index) => (
-										<View key={index} style={[styles.capabilityRow, index < shop.timings.length - 1 && styles.capabilityRowBorder]}>
-											<Text style={styles.addressText}>{timing}</Text>
-										</View>
-									))}
+									{shop.timings.map((timing, index) => {
+										const isClosed = timing.toLowerCase() === "closed";
+										return (
+											<View key={index} style={[styles.capabilityRow, index < shop.timings.length - 1 && styles.capabilityRowBorder]}>
+												<Text style={styles.dayLabel}>{DAYS_OF_WEEK[index] ?? `Day ${index + 1}`}</Text>
+												<Text style={isClosed ? styles.timingClosed : styles.timingOpen}>{isClosed ? "Closed" : timing}</Text>
+											</View>
+										);
+									})}
 								</View>
 							</View>
 						)}
@@ -187,8 +193,10 @@ const ShopDetails = () => {
 								) : (
 									services.map((service, index) => (
 										<View key={service._id} style={[styles.capabilityRow, index < services.length - 1 && styles.capabilityRowBorder]}>
+											<Text style={styles.capabilityText}>
+												{service.keys.pageType}, {service.keys.color ? "Color" : "Black & White"}, {service.keys.sidedness ? "Double Sided" : "Single Sided"}
+											</Text>
 											
-											<Text style={styles.capabilityText}>{service.name}</Text>
 										</View>
 									))
 								)}
@@ -208,9 +216,7 @@ const ShopDetails = () => {
 									services.map((service, index) => (
 										<View key={service._id} style={[styles.capabilityRow, index < services.length - 1 && styles.capabilityRowBorder]}>
 											
-											<Text style={styles.capabilityText}>
-												{service.keys.pageType}, {service.keys.color ? "Color" : "Black & White"}, {service.keys.sidedness ? "Double Sided" : "Single Sided"}
-											</Text>
+											<Text style={styles.capabilityText}>{service.name}</Text>
 											<Text style={styles.priceValue}>Rs. {service.rate}</Text>
 										</View>
 									))
@@ -412,12 +418,29 @@ const styles = StyleSheet.create({
 	capabilityRow: {
 		flexDirection: "row",
 		alignItems: "center",
+		justifyContent: "space-between",
 		gap: 12,
 		paddingVertical: 10,
 	},
 	capabilityRowBorder: {
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
+	},
+	dayLabel: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: colors.textPrimary,
+		flex: 1,
+	},
+	timingOpen: {
+		fontSize: 14,
+		color: colors.textPrimary,
+		fontWeight: "500",
+	},
+	timingClosed: {
+		fontSize: 14,
+		color: colors.textSecondary,
+		fontWeight: "500",
 	},
 	capabilityText: {
 		fontSize: 14,
