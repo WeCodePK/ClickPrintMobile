@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/colors";
+import { useKeyboardOffset } from "../hooks/useKeyboardOffset";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -28,6 +29,7 @@ const validateAmount = (value) => {
 const TopUpAmount = () => {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
+	const keyboardOffset = useKeyboardOffset();
 
 	const [amount, setAmount] = useState("");
 	const [error, setError] = useState(null);
@@ -61,18 +63,18 @@ const TopUpAmount = () => {
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
-		<SafeAreaView style={styles.container} edges={["top"]}>
+		<SafeAreaView style={[styles.container, { paddingBottom: keyboardOffset }]} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 			<View style={styles.header}>
 				<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>Top Up Amount</Text>
+				<Text style={styles.headerTitle}>Topup Amount</Text>
 				<View style={styles.placeholder} />
 			</View>
 
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-				<Text style={styles.label}>Enter the amount you want to add</Text>
+				<Text style={styles.label}>Enter the amount you want to add to your wallet</Text>
 
 					<View style={[styles.amountInputWrapper, error && styles.amountInputWrapperError]}>
 						<Text style={styles.currency}>Rs.</Text>
@@ -110,7 +112,8 @@ const TopUpAmount = () => {
 					</View>
 				</ScrollView>
 
-				<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+				{/* While the keyboard is open the container is already padded above it, so the bottom inset isn't needed */}
+				<View style={[styles.footer, { paddingBottom: keyboardOffset > 0 ? 0 : insets.bottom + 20 }]}>
 					<TouchableOpacity
 						style={[styles.continueButton, !isValid && styles.continueButtonDisabled]}
 						onPress={handleContinue}
@@ -136,7 +139,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 20,
-		paddingVertical: 16,
+		paddingVertical: 12,
 		backgroundColor: colors.cardBackground,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
@@ -160,7 +163,6 @@ const styles = StyleSheet.create({
 	},
 	scrollContent: {
 		padding: 20,
-		paddingBottom: 120,
 	},
 	label: {
 		fontSize: 15,
@@ -246,19 +248,7 @@ const styles = StyleSheet.create({
 		color: colors.cardBackground,
 	},
 	footer: {
-		position: "absolute",
-		bottom: 0,
-		left: 0,
-		right: 0,
-		backgroundColor: colors.cardBackground,
 		padding: 20,
-		borderTopWidth: 1,
-		borderTopColor: colors.borderLight,
-		shadowColor: colors.shadowMedium,
-		shadowOffset: { width: 0, height: -4 },
-		shadowOpacity: 1,
-		shadowRadius: 12,
-		elevation: 8,
 	},
 	continueButton: {
 		backgroundColor: colors.primary,

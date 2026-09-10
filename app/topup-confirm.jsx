@@ -1,12 +1,14 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import nayaPayLogo from "../assets/nayapay-logo.png";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { showAlert } from "../utils/alert";
@@ -16,9 +18,9 @@ import SecureStore from "../utils/storage";
 
 const API_BASE_URL = config.apiBaseUrl;
 
-// Top ups are collected into a single centralised account managed by ClickPrint.
-const CLICKPRINT_ACCOUNT_NAME = "ClickPrint";
-const CLICKPRINT_EASYPAISA_NUMBER = "03235400291";
+// Topups are collected into a single centralised account managed by ClickPrint.
+const CLICKPRINT_ACCOUNT_NAME = "Abdul Ahad";
+const CLICKPRINT_ACCOUNT_NUMBER = "03235400291";
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -31,6 +33,18 @@ const TopUpConfirm = () => {
 	const [error, setError] = useState(null);
 	const [proof, setProof] = useState(null); // ImagePicker asset
 	const [submitting, setSubmitting] = useState(false);
+	const [copied, setCopied] = useState(false);
+
+	const handleCopyNumber = async () => {
+		try {
+			await Clipboard.setStringAsync(CLICKPRINT_ACCOUNT_NUMBER);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000);
+		} catch (err) {
+			console.error("Error copying number:", err);
+			showAlert("Error", "Failed to copy the number. Please try again.");
+		}
+	};
 
 	const handlePickProof = async () => {
 		try {
@@ -112,16 +126,16 @@ const TopUpConfirm = () => {
 			});
 			const body = await response.json();
 			if (response.status !== 201 && !response.ok) {
-				throw new Error(body.message || "Failed to submit top up request.");
+				throw new Error(body.message || "Failed to submit topup request.");
 			}
 
-			showAlert("Top Up Requested", "Your top up request has been submitted. It will be credited once ClickPrint confirms your payment.", [
+			showAlert("Topup Requested", "Your topup request has been submitted. It will be credited once ClickPrint confirms your payment.", [
 				{ text: "OK", onPress: () => router.replace("/topup") },
 			]);
 		} catch (err) {
-			console.error("Error submitting top up:", err);
-			setError(err.message || "Failed to submit top up request. Please try again.");
-			showAlert("Error", err.message || "Failed to submit top up request. Please try again.");
+			console.error("Error submitting topup:", err);
+			setError(err.message || "Failed to submit topup request. Please try again.");
+			showAlert("Error", err.message || "Failed to submit topup request. Please try again.");
 		} finally {
 			setSubmitting(false);
 		}
@@ -136,14 +150,14 @@ const TopUpConfirm = () => {
 				<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>Confirm Top Up</Text>
+				<Text style={styles.headerTitle}>Confirm Topup</Text>
 				<View style={styles.placeholder} />
 			</View>
 
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 				{/* Amount summary */}
 				<View style={styles.amountCard}>
-					<Text style={styles.amountLabel}>Top Up Amount</Text>
+					<Text style={styles.amountLabel}>Topup Amount</Text>
 					<Text style={styles.amountValue}>Rs. {amount}</Text>
 				</View>
 
@@ -151,32 +165,47 @@ const TopUpConfirm = () => {
 				<Text style={styles.sectionTitle}>Pay to</Text>
 				<View style={styles.card}>
 					<View style={styles.shopRow}>
-						<View style={styles.shopIcon}>
-							<Feather name="credit-card" size={20} color={colors.primary} />
-						</View>
+						<Image source={nayaPayLogo} style={styles.shopIcon} contentFit="contain" />
 						<View style={styles.shopInfo}>
 							<Text style={styles.shopName}>{CLICKPRINT_ACCOUNT_NAME}</Text>
-							<Text style={styles.shopAddress}>Official EasyPaisa account</Text>
+							<Text style={styles.shopAddress}>NayaPay</Text>
 						</View>
 					</View>
 
 					<View style={styles.divider} />
 
-					<Text style={styles.walletLabel}>EasyPaisa Number</Text>
-					<Text style={styles.walletNumber}>{CLICKPRINT_EASYPAISA_NUMBER}</Text>
+					<Text style={styles.walletLabel}>Account Number</Text>
+					<View style={styles.walletNumberRow}>
+						<Text style={styles.walletNumber}>{CLICKPRINT_ACCOUNT_NUMBER}</Text>
+						<TouchableOpacity style={styles.copyButton} onPress={handleCopyNumber} activeOpacity={0.7}>
+							<Feather name={copied ? "check" : "copy"} size={16} color={colors.primary} />
+							<Text style={styles.copyButtonText}>{copied ? "Copied" : "Copy"}</Text>
+						</TouchableOpacity>
+					</View>
 				</View>
 
 				{/* Instructions */}
 				<View style={styles.infoBanner}>
-					<Feather name="info" size={16} color={colors.creditWallet} />
-					<Text style={styles.infoBannerText}>
-						Transfer Rs. {amount} to the ClickPrint EasyPaisa number above, then attach a screenshot of the payment as proof. Your wallet is
-						credited once ClickPrint confirms the payment.
-					</Text>
+					<View style={styles.infoBannerHeader}>
+						<Feather name="info" size={16} color={colors.creditWallet} />
+						<Text style={styles.infoBannerTitle}>Instructions</Text>
+					</View>
+					<View style={styles.bulletRow}>
+						<Text style={styles.infoBannerText}>{"•"}</Text>
+						<Text style={[styles.infoBannerText, styles.bulletText]}>
+							Transfer <Text style={styles.bold}>Rs. {amount}</Text> to the account number above, and then attach a screenshot of the payment as proof.
+						</Text>
+					</View>
+					<View style={styles.bulletRow}>
+						<Text style={styles.infoBannerText}>{"•"}</Text>
+						<Text style={[styles.infoBannerText, styles.bulletText]}>
+							Your wallet is credited once we confirm the payment, which can take a few minutes.
+						</Text>
+					</View>
 				</View>
 
 				{/* Payment proof (required) */}
-				<Text style={styles.sectionTitle}>Payment Proof</Text>
+				<Text style={styles.sectionTitle}>Payment Screenshot</Text>
 				{proof ? (
 					<View style={styles.proofCard}>
 						<Image source={{ uri: proof.uri }} style={styles.proofImage} contentFit="cover" />
@@ -193,9 +222,9 @@ const TopUpConfirm = () => {
 					<>
 						<TouchableOpacity style={styles.uploadButton} onPress={handlePickProof}>
 							<Feather name="upload" size={20} color={colors.primary} />
-							<Text style={styles.uploadButtonText}>Upload payment screenshot</Text>
+							<Text style={styles.uploadButtonText}>Upload Payment Proof</Text>
 						</TouchableOpacity>
-						<Text style={styles.requiredHint}>A payment screenshot is required to submit your top up.</Text>
+						<Text style={styles.requiredHint}>A payment screenshot is required to submit your topup request.</Text>
 					</>
 				)}
 
@@ -213,7 +242,7 @@ const TopUpConfirm = () => {
 						<ActivityIndicator color={colors.cardBackground} />
 					) : (
 						<>
-							<Text style={styles.confirmButtonText}>Confirm Top Up</Text>
+							<Text style={styles.confirmButtonText}>Confirm Topup</Text>
 							<Feather name="check" size={20} color={colors.cardBackground} />
 						</>
 					)}
@@ -235,7 +264,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 20,
-		paddingVertical: 16,
+		paddingVertical: 12,
 		backgroundColor: colors.cardBackground,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
@@ -259,7 +288,6 @@ const styles = StyleSheet.create({
 	},
 	scrollContent: {
 		padding: 20,
-		paddingBottom: 40,
 	},
 	amountCard: {
 		backgroundColor: colors.primary,
@@ -312,10 +340,6 @@ const styles = StyleSheet.create({
 	shopIcon: {
 		width: 44,
 		height: 44,
-		borderRadius: 12,
-		backgroundColor: "rgba(0, 217, 163, 0.10)",
-		justifyContent: "center",
-		alignItems: "center",
 	},
 	shopInfo: {
 		flex: 1,
@@ -342,26 +366,64 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		marginBottom: 6,
 	},
+	walletNumberRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: 12,
+	},
 	walletNumber: {
 		fontSize: 22,
 		fontWeight: "700",
 		color: colors.textPrimary,
 		letterSpacing: 1,
 	},
-	infoBanner: {
+	copyButton: {
 		flexDirection: "row",
-		alignItems: "flex-start",
-		gap: 10,
+		alignItems: "center",
+		gap: 6,
+		paddingVertical: 8,
+		paddingHorizontal: 12,
+		borderRadius: 10,
+		backgroundColor: "rgba(0, 217, 163, 0.10)",
+	},
+	copyButtonText: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: colors.primary,
+	},
+	infoBanner: {
+		gap: 6,
 		backgroundColor: "rgba(59, 158, 255, 0.08)",
 		borderRadius: 12,
 		padding: 14,
 		marginBottom: 24,
 	},
+	infoBannerHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		marginBottom: 2,
+	},
+	infoBannerTitle: {
+		fontSize: 14,
+		fontWeight: "700",
+		color: colors.creditWallet,
+	},
+	bulletRow: {
+		flexDirection: "row",
+		gap: 6,
+	},
 	infoBannerText: {
-		flex: 1,
 		fontSize: 13,
 		color: colors.textPrimary,
 		lineHeight: 19,
+	},
+	bulletText: {
+		flex: 1,
+	},
+	bold: {
+		fontWeight: "700",
 	},
 	uploadButton: {
 		flexDirection: "row",
