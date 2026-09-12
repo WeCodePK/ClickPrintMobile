@@ -1,13 +1,11 @@
 {
   "name": "ClickPrint",
-  "short_name": "ClickPrint",
-  "description": "Order prints from nearby shops, right from your phone.",
+  "description": "Send documents to print shops, all from your phone.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F7F8FA",
-  "categories": ["productivity", "utilities"],
   "screenshots": [
     {
       "src": "/screenshots/mobile-1.jpeg",

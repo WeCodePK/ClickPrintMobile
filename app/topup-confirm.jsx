@@ -8,7 +8,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import nayaPayLogo from "../assets/nayapay-logo.png";
+import nayaPayLogo from "../assets/nayapay.png";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { showAlert } from "../utils/alert";
