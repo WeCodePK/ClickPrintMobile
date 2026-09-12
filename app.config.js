@@ -27,7 +27,7 @@ export default {
 			edgeToEdgeEnabled: true,
 			predictiveBackGestureEnabled: false,
 			googleServicesFile: "./google-services.json",
-			package: "com.kamalhassan.printmanagementsystemclientapp",
+			package: "com.clickprint.mobile",
 			config: {
 				googleMaps: {
 					apiKey: process.env.GOOGLE_MAPS_API_KEY,
