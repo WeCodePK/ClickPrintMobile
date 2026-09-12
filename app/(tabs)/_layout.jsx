@@ -1,11 +1,11 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Ionicons } from "@expo/vector-icons";
+import * as Notifications from 'expo-notifications';
 import { Tabs } from "expo-router";
 import { useEffect, useRef } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../../constants/colors";
-import * as Notifications from 'expo-notifications';
 import { createAndroidNotificationChannel, getNotificationsEnabledPref, registerForPushNotifications, sendPushTokenToBackend } from "../../services/notifications";
 
 //----------------------------------- FOREGROUND NOTIFICATION -----------------------------------//
@@ -71,7 +71,7 @@ export default function Layout() {
 					borderTopColor: colors.borderLight,
 					paddingTop: 10,
 					paddingBottom: Math.max(insets.bottom, 5),
-					height: 80 + Math.max(insets.bottom, 10),
+					height: 70 + Math.max(insets.bottom, 10),
 					shadowColor: colors.shadowMedium,
 					shadowOffset: { width: 0, height: -4 },
 					shadowOpacity: 1,
