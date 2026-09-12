@@ -13,10 +13,6 @@ import { colors } from "../constants/colors";
 const AboutPage = () => {
 	const router = useRouter();
 
-	// This screen is pushed onto the root stack from the Profile tab; going
-	// "back" there can land the tabs navigator on its initial tab (Home)
-	// instead of restoring Profile. Route back explicitly instead of trusting
-	// router.back().
 	const goBack = useCallback(() => {
 		router.replace("/(tabs)/profile");
 	}, [router]);
