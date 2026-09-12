@@ -42,8 +42,8 @@ const UploadDocument = () => {
 				const existingDocs = (draft.files || []).map((f) => {
 					const originalName = f.file?.name || "Document";
 					return {
-						// Synthetic file object so DocumentCard can show the name/extension.
-						file: { name: originalName },
+						// Synthetic file object so DocumentCard can show the name/extension/pages.
+						file: { name: originalName, numberOfPages: f.file?.numberOfPages },
 						name: originalName.replace(/\.[^/.]+$/, "") || "Document",
 						fileId: f.file?._id || f.file,
 						settings: f.settings || {},
@@ -87,13 +87,68 @@ const UploadDocument = () => {
 			});
 
 			if (!result.canceled) {
+				const token = await SecureStore.getItemAsync("authToken");
 				const newDocs = result.assets.map((file) => ({
+					id: Math.random().toString(),
 					file,
 					name: file.name ? file.name.replace(/\.[^/.]+$/, "") || "Document" : "Document",
-					status: "idle",
+					status: "uploading",
 				}));
+				
 				setDocuments((prev) => [...prev, ...newDocs]);
 				setError(null);
+				setPicking(false);
+
+				const failedDocs = [];
+
+				await Promise.all(
+					newDocs.map(async (doc) => {
+						const formData = new FormData();
+						if (Platform.OS === "web") {
+							let filePart = doc.file.file;
+							if (!filePart) {
+								const res = await fetch(doc.file.uri);
+								filePart = await res.blob();
+							}
+							formData.append("file", filePart, doc.file.name);
+						} else {
+							formData.append("file", {
+								uri: doc.file.uri,
+								name: doc.file.name,
+								type: doc.file.mimeType,
+							});
+						}
+						formData.append("convert", "true");
+						
+						const uploadData = await uploadDocument(formData, doc.file.name, token);
+
+						if (uploadData) {
+							setDocuments((prev) => prev.map((d) => {
+								if (d.id === doc.id) {
+									return {
+										...d,
+										status: "success",
+										fileId: uploadData._id,
+										file: { ...d.file, numberOfPages: uploadData.numberOfPages }
+									};
+								}
+								return d;
+							}));
+						} else {
+							failedDocs.push(doc.file.name);
+							setDocuments((prev) => prev.map((d) => {
+								if (d.id === doc.id) {
+									return { ...d, status: "failed" };
+								}
+								return d;
+							}));
+						}
+					})
+				);
+
+				if (failedDocs.length > 0) {
+					setError(`${failedDocs.length} document(s) failed to upload: ${failedDocs.join(", ")}. Please try again.`);
+				}
 			}
 		} catch (err) {
 			console.error("Error picking document:", err);
@@ -122,82 +177,29 @@ const UploadDocument = () => {
 	const handleContinue = async () => {
 		setUploading(true);
 		setError(null);
-		const failedDocs = [];
 		const token = await SecureStore.getItemAsync("authToken");
 		try {
-			// Upload only newly-picked files; files already on the draft keep their
-			// existing id (and settings). Results stay in document order.
-			const results = await Promise.all(
-				documents.map(async (doc, index) => {
-					if (doc.existing) {
-						return { fileId: doc.fileId, name: doc.name || doc.file.name, settings: doc.settings };
-					}
-
-					setDocuments((prev) => {
-						const newDocs = [...prev];
-						newDocs[index] = { ...newDocs[index], status: "uploading" };
-						return newDocs;
-					});
-
-					const formData = new FormData();
-					if (Platform.OS === "web") {
-						// On web, FormData needs a real Blob/File. Appending the RN
-						// { uri, name, type } object would serialize to "[object Object]".
-						// expo-document-picker exposes the browser File on `.file`; fall
-						// back to fetching the blob: URL if it isn't present.
-						let filePart = doc.file.file;
-						if (!filePart) {
-							const res = await fetch(doc.file.uri);
-							filePart = await res.blob();
-						}
-						formData.append("file", filePart, doc.file.name);
-					} else {
-						formData.append("file", {
-							uri: doc.file.uri,
-							name: doc.file.name,
-							type: doc.file.mimeType,
-						});
-					}
-					// Printable documents are converted server-side.
-					formData.append("convert", "true");
-					const fileId = await uploadDocument(formData, doc.file.name, token);
-
-					if (fileId) {
-						setDocuments((prev) => {
-							const newDocs = [...prev];
-							newDocs[index] = { ...newDocs[index], status: "success" };
-							return newDocs;
-						});
-						return { fileId, name: doc.name || doc.file.name };
-					}
-
-					failedDocs.push(doc.file.name);
-					setDocuments((prev) => {
-						const newDocs = [...prev];
-						newDocs[index] = { ...newDocs[index], status: "failed" };
-						return newDocs;
-					});
-					return null;
-				}),
-			);
-
-			if (failedDocs.length > 0) {
-				setError(`${failedDocs.length} document(s) failed to upload: ${failedDocs.join(", ")}. Please try again.`);
+			if (documents.some(d => d.status === "uploading")) {
+				setError("Please wait for all documents to finish uploading.");
+				setUploading(false);
+				return;
+			}
+			
+			const successfulDocs = documents.filter(d => d.status === "success" || d.existing);
+			
+			if (successfulDocs.length === 0) {
+				setError("No documents to upload.");
+				setUploading(false);
 				return;
 			}
 
-			// Wait 500ms to show the checkmarks before navigating
-			await new Promise((resolve) => setTimeout(resolve, 500));
-
-			const documentArray = results.map((r) => ({ fileId: r.fileId, name: r.name }));
+			const documentArray = successfulDocs.map((doc) => ({ fileId: doc.fileId, name: doc.name || doc.file.name }));
 
 			let targetDraftId = draftId;
 			if (draftId) {
-				// Resuming: replace the whole files array, preserving settings on
-				// files that already had them.
-				const files = results.map((r) => {
-					const entry = { file: r.fileId };
-					if (r.settings && Object.keys(r.settings).length > 0) entry.settings = r.settings;
+				const files = successfulDocs.map((doc) => {
+					const entry = { file: doc.fileId };
+					if (doc.settings && Object.keys(doc.settings).length > 0) entry.settings = doc.settings;
 					return entry;
 				});
 				const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
@@ -214,7 +216,6 @@ const UploadDocument = () => {
 				}
 				console.log("Draft updated with files:", targetDraftId);
 			} else {
-				// New draft with just the file IDs
 				const draftFiles = documentArray.map((doc) => ({ file: doc.fileId }));
 				const draftResponse = await fetch(`${API_BASE_URL}/drafts`, {
 					method: "POST",
@@ -243,8 +244,8 @@ const UploadDocument = () => {
 				},
 			});
 		} catch (err) {
-			console.error("Error uploading documents:", err);
-			setError("Failed to upload documents. Please try again.");
+			console.error("Error continuing:", err);
+			setError("Failed to continue. Please try again.");
 		} finally {
 			setUploading(false);
 		}
@@ -260,10 +261,10 @@ const UploadDocument = () => {
 				body: formData,
 			});
 			const body = await response.json();
-			console.log(fileName, " : ", body);
+			
 			if (response.status === 201) {
 				console.log("Document uploaded successfully named ", fileName, " with id ", body.data.file._id);
-				return body.data.file._id;
+				return body.data.file;
 			} else {
 				console.log("error in uploading document named ", fileName, ":", body.message);
 				return null;
@@ -359,7 +360,7 @@ const UploadDocument = () => {
 									: styles.continueButtonText
 							}
 						>
-							Upload
+							Continue
 						</Text>
 					)}
 				</TouchableOpacity>

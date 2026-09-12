@@ -20,11 +20,16 @@ const DocumentCard = ({ doc, index, onRemove }) => {
 							{doc.file.name}
 						</Text>
 					</TouchableOpacity>
-					{doc.file.size != null ? (
-						<Text style={styles.documentFileSize}>{(doc.file.size / 1024).toFixed(2)} KB</Text>
-					) : (
-						<Text style={styles.documentFileSize}>Previously uploaded</Text>
-					)}
+					<View style={{ flexDirection: "col", alignItems: "start" }}>
+						{doc.file.size != null ? (
+							<Text style={styles.documentFileSize}>{(doc.file.size / 1024).toFixed(2)} KB</Text>
+						) : (
+							<Text style={styles.documentFileSize}>Previously uploaded</Text>
+						)}
+						{doc.file.numberOfPages != null && (
+							<Text style={styles.documentFileSize}>{doc.file.numberOfPages === 1 ? 'Number of Pages' : 'Number of Pages'} : {doc.file.numberOfPages} </Text>
+						)}
+					</View>
 				</View>
 				{doc.status === "uploading" ? (
 					<View style={styles.statusContainer}>
