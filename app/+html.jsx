@@ -67,7 +67,7 @@ export default function Root({ children }) {
 				<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
 				{/* Icons */}
-				<link rel="icon" href="/favicon.png" />
+				<link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
 
 				{/*
 				  Disable body scrolling on web so ScrollView components behave

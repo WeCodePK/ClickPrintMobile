@@ -5,30 +5,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
+  "theme_color": "#F7F8FA",
   "background_color": "#F7F8FA",
-  "screenshots": [
-    {
-      "src": "/screenshots/mobile-1.jpeg",
-      "sizes": "1080x1920",
-      "type": "image/jpeg",
-      "form_factor": "narrow",
-      "label": "Order prints from nearby shops"
-    },
-    {
-      "src": "/screenshots/mobile-2.jpeg",
-      "sizes": "1080x1920",
-      "type": "image/jpeg",
-      "form_factor": "narrow",
-      "label": "Upload, choose a shop, pick up"
-    },
-    {
-      "src": "/screenshots/desktop-1.png",
-      "sizes": "1920x1080",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "ClickPrint on the web"
-    }
-  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -53,6 +31,20 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile-1.jpeg",
+      "sizes": "786x1600",
+      "type": "image/jpeg",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshots/mobile-2.jpeg",
+      "sizes": "786x1600",
+      "type": "image/jpeg",
+      "form_factor": "narrow"
     }
   ]
 }
