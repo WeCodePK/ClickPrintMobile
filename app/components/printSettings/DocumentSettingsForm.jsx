@@ -272,7 +272,7 @@ const DocumentSettingsForm = ({
 						<View style={styles.segmentHeaderText}>
 							<Text style={styles.segmentTitle}>Page ranges</Text>
 							{!isSplit && (
-								<Text style={styles.segmentSubtitle}>Print different pages with different settings</Text>
+								<Text style={styles.segmentSubtitle} numberOfLines = {2}>Print different pages with different settings</Text>
 							)}
 						</View>
 						<TouchableOpacity style={styles.addSegmentButton} onPress={onAddSegment}>
@@ -371,7 +371,7 @@ const DocumentSettingsForm = ({
 						label="Color Mode"
 						options={[
 							{ label: "Color", value: "color" },
-							{ label: "B&W", value: "bw" },
+							{ label: "Black & White", value: "bw" },
 						]}
 						selectedValue={colorMode}
 						onSelect={(val) => onSettingsChange("color", val)}
@@ -635,6 +635,7 @@ const styles = StyleSheet.create({
 	},
 	segmentSubtitle: {
 		fontSize: 12,
+		width: 200,
 		color: colors.textSecondary,
 		marginTop: 2,
 	},
@@ -739,7 +740,7 @@ const styles = StyleSheet.create({
 		borderWidth: 1.5,
 		borderColor: colors.borderLight,
 		backgroundColor: colors.background,
-		minWidth: 150, // fixed instead of minWidth: 100
+		minWidth: 160, // fixed instead of minWidth: 100
 		gap: 8,
 	},
 	dropdownButtonText: {
@@ -887,10 +888,10 @@ const styles = StyleSheet.create({
 	copiesContainer: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 17,
+		gap: 15,
 	},
 	copiesButton: {
-		width: 40,
+		width: 50,
 		height: 40,
 		borderRadius: 8,
 		borderWidth: 1.5,

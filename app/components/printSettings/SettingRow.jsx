@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
 	},
 	optionButton: {
 		flex: 1,
-		maxWidth: 70,
+		maxWidth: 75,
 		paddingVertical: 10,
 		borderRadius: 8,
 		borderWidth: 1.5,
