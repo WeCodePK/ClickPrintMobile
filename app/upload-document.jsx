@@ -235,7 +235,6 @@ const UploadDocument = () => {
 				console.log("Draft created with ID:", targetDraftId);
 			}
 
-			setDocuments([]);
 			router.push({
 				pathname: "/print-settings",
 				params: {
