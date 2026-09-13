@@ -26,45 +26,28 @@ const HomePage = () => {
 	const router = useRouter();
 	const { drafts, loading, error, refresh, refreshing, reload } = useDrafts();
 	const { activeJobs, loading: loadingJobs, refresh: refreshJobs, reload: reloadJobs } = useActiveJobs();
-	const [accountBalance, setAccountBalance] = useState(0);
+	const [userName, setUserName] = useState("");
 	const { signOut } = useAuth();
 
-	const fetchBalance = useCallback(async () => {
+	const loadUserData = useCallback(async () => {
 		try {
-			const token = await SecureStore.getItemAsync("authToken");
-			const userId = await SecureStore.getItemAsync("userId");
-			if (!userId) return;
-			const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-				},
-			});
-			if (response.status === 401) {
-				await SecureStore.deleteItemAsync("authToken");
-				await SecureStore.deleteItemAsync("userId");
-				await SecureStore.deleteItemAsync("name");
-				router.replace("/");
-				return;
-			}
-			const body = await response.json();
-			if (body.success) {
-				setAccountBalance(body.data.user.balance);
-			}
+			const name = (await SecureStore.getItemAsync("name")) || "User";
+			setUserName(name);
 		} catch (error) {
-			console.error("Error fetching account balance:", error);
+			console.error("Error loading user data:", error);
 		}
-	}, [router]);
+	}, []);
 
 	useEffect(() => {
-		fetchBalance();
-	}, [fetchBalance]);
+		loadUserData();
+	}, [loadUserData]);
 
 	useFocusEffect(
 		useCallback(() => {
 			reload();
 			reloadJobs();
-			fetchBalance();
-		}, [reload, reloadJobs, fetchBalance])
+			loadUserData();
+		}, [reload, reloadJobs, loadUserData])
 	);
 
 	useEffect(() => {
@@ -76,7 +59,7 @@ const HomePage = () => {
 	const refreshAll = () => {
 		refresh();
 		refreshJobs();
-		fetchBalance();
+		loadUserData();
 	};
 
 	const handleDeleteDraft = useCallback((draftId) => {
@@ -166,49 +149,37 @@ const HomePage = () => {
 				refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} />}
 			>
 				<View style={styles.topCardsContainer}>
-					<View style={styles.cardsRow}>
-						{/* Current Balance Card */}
+					{/* Welcome Message */}
+					<View style={styles.welcomeContainer}>
+						<Text style={styles.welcomeGreeting}>Welcome back,</Text>
+						<Text style={styles.welcomeName}>{userName || "User"}</Text>
+					</View>
 
-						<View style={styles.balanceCard}>
-							<View style={styles.balanceContent}>
-								<Text style={styles.balanceLabel}>Current Balance</Text>
-								<Text style={styles.balanceCurrency}>Rs.</Text>
-								<Text style={styles.balanceAmount}>{accountBalance}</Text>
+					{/* New Print Job Card */}
+					<TouchableOpacity
+						style={styles.newPrintJobCard}
+						activeOpacity={0.85}
+						onPress={() => {
+							router.push("/upload-document");
+						}}
+					>
+						<View style={styles.newPrintJobContent}>
+							<View style={styles.newPrintJobHeader}>
+								<View style={styles.newPrintJobBadge}>
+									<Feather name="printer" size={24} color={colors.cardBackground} />
+								</View>
+								<View style={styles.newPrintJobArrow}>
+									<Feather name="arrow-up-right" size={24} color={colors.cardBackground} />
+								</View>
+							</View>
+							<View style={styles.newPrintJobTextGroup}>
+								<Text style={styles.newPrintJobTitle}>New Print Job</Text>
+								<Text style={styles.newPrintJobSubtitle}>
+									Upload documents & start printing instantly
+								</Text>
 							</View>
 						</View>
-
-						{/* Action Cards Column */}
-
-						<View style={styles.actionCardsColumn}>
-							{/* Credit Wallet Card */}
-
-							<TouchableOpacity
-								style={[styles.actionCard, styles.creditWalletCard]}
-								onPress={() => {
-									router.push("/topup");
-								}}
-							>
-								<View style={styles.actionCardIcon}>
-									<Feather name="arrow-down" size={26} color={colors.cardBackground} />
-								</View>
-								<Text style={styles.actionCardText}>Top Up Wallet</Text>
-							</TouchableOpacity>
-
-							{/* New Print Card */}
-
-							<TouchableOpacity
-								style={[styles.actionCard, styles.printRequestCard]}
-								onPress={() => {
-									router.push("/upload-document");
-								}}
-							>
-								<View style={styles.actionCardIconRight}>
-									<Feather name="arrow-up-right" size={26} color={colors.cardBackground} />
-								</View>
-								<Text style={styles.actionCardText}>New Print Job</Text>
-							</TouchableOpacity>
-						</View>
-					</View>
+					</TouchableOpacity>
 				</View>
 
 				<View style={styles.listsWrapper}>
@@ -298,99 +269,81 @@ const styles = StyleSheet.create({
 		flexGrow: 1,
 	},
 	topCardsContainer: {
-		padding: 20,
+		paddingHorizontal: 20,
+		paddingTop: 16,
+		paddingBottom: 20,
 		maxWidth: 600,
 		alignSelf: "center",
 		width: "100%",
-	},
-	cardsRow: {
-		flexDirection: "row",
 		gap: 16,
-		height: Math.min(SCREEN_HEIGHT * 0.35, 300),
-		minHeight: 240,
 	},
-	balanceCard: {
-		flex: 1,
+	welcomeContainer: {
+		paddingHorizontal: 4,
+	},
+	welcomeGreeting: {
+		fontSize: 15,
+		fontWeight: "500",
+		color: colors.textSecondary,
+		letterSpacing: 0.2,
+		marginBottom: 2,
+	},
+	welcomeName: {
+		fontSize: 26,
+		fontWeight: "800",
+		color: colors.textPrimary,
+		letterSpacing: -0.5,
+	},
+	newPrintJobCard: {
 		backgroundColor: colors.primary,
 		borderRadius: 24,
-		padding: 22,
-		shadowColor: colors.shadowPrimary,
+		padding: 24,
+		minHeight: 160,
+		justifyContent: "center",
+		shadowColor: colors.shadowPrintRequest,
 		shadowOffset: { width: 0, height: 8 },
-		shadowOpacity: 0.3,
-		shadowRadius: 32,
+		shadowOpacity: 0.35,
+		shadowRadius: 20,
 		elevation: 8,
 	},
-	balanceContent: {
-		flex: 1,
-		justifyContent: "flex-start",
+	newPrintJobContent: {
+		justifyContent: "space-between",
+		gap: 20,
 	},
-	balanceLabel: {
-		fontSize: 18,
-		fontWeight: "600",
-		color: colors.cardBackground,
-		marginBottom: 8,
-		letterSpacing: 0.3,
-	},
-	balanceCurrency: {
-		fontSize: 35,
-		fontWeight: "600",
-		color: colors.cardBackground,
-		letterSpacing: 0.3,
-		marginTop: 12,
-	},
-	balanceAmount: {
-		fontSize: Math.min(SCREEN_WIDTH * 0.16, 45),
-		fontWeight: "700",
-		color: colors.cardBackground,
-		letterSpacing: -2,
-	},
-	viewTransactions: {
+	newPrintJobHeader: {
 		flexDirection: "row",
+		justifyContent: "space-between",
 		alignItems: "center",
+	},
+	newPrintJobBadge: {
+		width: 48,
+		height: 48,
+		borderRadius: 16,
+		backgroundColor: "rgba(255, 255, 255, 0.22)",
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	newPrintJobArrow: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		backgroundColor: "rgba(255, 255, 255, 0.22)",
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	newPrintJobTextGroup: {
 		gap: 6,
 	},
-	viewTransactionsText: {
-		fontSize: 18,
-		fontWeight: "600",
+	newPrintJobTitle: {
+		fontSize: 24,
+		fontWeight: "700",
 		color: colors.cardBackground,
-		lineHeight: 22,
+		letterSpacing: 0.2,
 	},
-	actionCardsColumn: {
-		flex: 1,
-		gap: 16,
-	},
-	actionCard: {
-		flex: 1,
-		borderRadius: 24,
-		padding: 20,
-		justifyContent: "space-between",
-	},
-	creditWalletCard: {
-		backgroundColor: colors.creditWallet,
-		shadowColor: colors.shadowCreditWallet,
-	},
-	printRequestCard: {
-		backgroundColor: colors.printRequest,
-		shadowColor: colors.shadowPrintRequest,
-	},
-	actionCardIcon: {
-		width: 35,
-		height: 35,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	actionCardIconRight: {
-		width: 35,
-		height: 35,
-		justifyContent: "center",
-		alignItems: "center",
-		alignSelf: "flex-end",
-	},
-	actionCardText: {
-		fontSize: 18,
-		fontWeight: "600",
-		color: colors.cardBackground,
-		lineHeight: 22,
+	newPrintJobSubtitle: {
+		fontSize: 14,
+		fontWeight: "500",
+		color: "rgba(255, 255, 255, 0.85)",
+		lineHeight: 18,
 	},
 	listsWrapper: {
 		flex: 1,
