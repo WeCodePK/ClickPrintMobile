@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import SecureStore from "../utils/storage";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
@@ -49,7 +49,6 @@ const ShopDetails = () => {
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState(null);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [onlineOnly, setOnlineOnly] = useState(false);
 
 	// Parse params from print-settings (fast path); the draft is the source of
 	// truth and re-hydrates these below when resuming / coming back.
@@ -73,16 +72,24 @@ const ShopDetails = () => {
 
 	// Score against every segment independently (a split file contributes each of
 	// its page-range settings), so flatten the per-document segment arrays first.
+	// Online shops are shown at the top, offline shops at the bottom, sorted by capability score.
 	const flatSettings = flattenSegments(parsedSettings);
 	const sortedShops = [...shops].sort((a, b) => {
+		const aOnline = Boolean(a.isOnline);
+		const bOnline = Boolean(b.isOnline);
+
+		if (aOnline !== bOnline) {
+			return aOnline ? -1 : 1;
+		}
+
 		const scoreA = calculateShopScore(a, flatSettings);
 		const scoreB = calculateShopScore(b, flatSettings);
 		return scoreB - scoreA;
 	});
 
-	const filteredShops = sortedShops
-		.filter((shop) => shop.name.toLowerCase().includes(searchQuery.toLowerCase()))
-		.filter((shop) => !onlineOnly || shop.isOnline);
+	const filteredShops = sortedShops.filter((shop) =>
+		shop.name.toLowerCase().includes(searchQuery.toLowerCase())
+	);
 
 	useEffect(() => {
 		fetchShops();
@@ -219,22 +226,16 @@ const ShopDetails = () => {
 			</View>
 
 			<View style={styles.searchContainer}>
-				<TextInput
-					style={styles.searchInput}
-					placeholder="🔎   Search shops..."
-					placeholderTextColor={colors.textSecondary}
-					value={searchQuery}
-					onChangeText={setSearchQuery}
-					returnKeyType="search"
-					clearButtonMode="while-editing"
-				/>
-				<View style={styles.onlineToggle}>
-					<Text style={styles.onlineToggleLabel}>Online Shops</Text>
-					<Switch
-						value={onlineOnly}
-						onValueChange={setOnlineOnly}
-						trackColor={{ false: colors.borderLight, true: colors.primary }}
-						thumbColor={colors.cardBackground}
+				<View style={styles.searchBar}>
+					<Feather name="search" size={18} color={colors.textSecondary} style={styles.searchIcon} />
+					<TextInput
+						style={styles.searchInput}
+						placeholder="Search shops..."
+						placeholderTextColor={colors.textSecondary}
+						value={searchQuery}
+						onChangeText={setSearchQuery}
+						returnKeyType="search"
+						clearButtonMode="while-editing"
 					/>
 				</View>
 			</View>
@@ -242,7 +243,7 @@ const ShopDetails = () => {
 			{/* Priority info banner */}
 			<View style={styles.priorityBanner}>
 				<Feather name="zap" size={16} color={colors.primary} />
-				<Text style={styles.priorityBannerText}>Shops are sorted by best match for your print settings</Text>
+				<Text style={styles.priorityBannerText}>Online shops are shown first, sorted by match for your settings</Text>
 			</View>
 
 			{loading ? (
@@ -271,8 +272,8 @@ const ShopDetails = () => {
 					<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 						{filteredShops.length === 0 ? (
 							<View style={styles.emptyContainer}>
-								<Feather name={onlineOnly ? "wifi-off" : "search"} size={48} color={colors.textSecondary} />
-								<Text style={styles.emptyText}>{onlineOnly ? "No shops online" : `No shops match "${searchQuery}"`}</Text>
+								<Feather name="search" size={48} color={colors.textSecondary} />
+								<Text style={styles.emptyText}>{`No shops match "${searchQuery}"`}</Text>
 							</View>
 						) : (
 							filteredShops.map((shop) => (
@@ -383,35 +384,30 @@ const styles = StyleSheet.create({
 		width: 40,
 	},
 	searchContainer: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
 		backgroundColor: colors.cardBackground,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
 		paddingHorizontal: 20,
-		paddingVertical: 10,
+		paddingVertical: 12,
 	},
-	onlineToggle: {
+	searchBar: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 8,
-	},
-	onlineToggleLabel: {
-		fontSize: 13,
-		fontWeight: "600",
-		color: colors.textSecondary,
-	},
-	searchInput: {
-		width: "50%",
-		fontSize: 15,
-		color: colors.textPrimary,
-		paddingVertical: 5,
-		paddingHorizontal: 10,
 		backgroundColor: colors.background,
-		borderRadius: 10,
+		borderRadius: 12,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
+		paddingHorizontal: 14,
+		height: 44,
+	},
+	searchIcon: {
+		marginRight: 10,
+	},
+	searchInput: {
+		flex: 1,
+		fontSize: 15,
+		color: colors.textPrimary,
+		paddingVertical: 0,
 	},
 	priorityBanner: {
 		flexDirection: "row",
