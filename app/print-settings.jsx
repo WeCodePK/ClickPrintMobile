@@ -71,6 +71,8 @@ const PrintSettings = () => {
 		return Array.from({ length: parsedDocuments.length || 1 }, () => [{ ...DEFAULT_SETTINGS }]);
 	});
 	const [hydrating, setHydrating] = useState(!!draftId);
+	const [submitting, setSubmitting] = useState(false);
+	const [draftShopId, setDraftShopId] = useState(null);
 
 	// Restore files + settings from the saved draft so resuming (or coming back
 	// from shop selection) shows exactly what was persisted last.
@@ -87,6 +89,10 @@ const PrintSettings = () => {
 					setAllSegments(segmentsArrayFromDraft(draft));
 					setCurrentDocIndex(0);
 					setCurrentSegmentIndex(0);
+				}
+				const shopId = draft.shop?._id || (typeof draft.shop === "string" ? draft.shop : null);
+				if (shopId) {
+					setDraftShopId(shopId);
 				}
 			} catch (e) {
 				console.error("Error loading draft settings:", e);
@@ -190,6 +196,7 @@ const PrintSettings = () => {
 		// Flatten every document's segments into one backend file entry each; a
 		// split file becomes several entries sharing the same file id.
 		try {
+			setSubmitting(true);
 			const token = await SecureStore.getItemAsync("authToken");
 			const files = [];
 			allSegments.forEach((segs, docIndex) => {
@@ -225,6 +232,26 @@ const PrintSettings = () => {
 
 			console.log("Draft updated with settings:", data);
 
+			if (draftShopId) {
+				const checkResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}/check`, {
+					method: "PATCH",
+					headers: {
+						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
+					},
+				});
+				const checkData = await checkResponse.json();
+				if (!checkResponse.ok) {
+					throw new Error(checkData.message || "Failed to calculate cost.");
+				}
+				
+				router.push({
+					pathname: "/draft-details",
+					params: { draft: JSON.stringify(checkData.data.draft) },
+				});
+				return;
+			}
+
 			router.push({
 				pathname: "/shop-details",
 				params: {
@@ -236,6 +263,8 @@ const PrintSettings = () => {
 		} catch (err) {
 			console.error("Error updating draft with settings:", err);
 			showAlert("Error", err.message || "Failed to save settings. Please try again.");
+		} finally {
+			setSubmitting(false);
 		}
 	};
 
@@ -319,7 +348,7 @@ const PrintSettings = () => {
 					showCopyToAll={numberOfDocuments > 1}
 					onCopyToAll={handleCopyToAll}
 					onContinue={handleContinue}
-					loading={false}
+					loading={submitting}
 					error={null}
 				/>
 			)}

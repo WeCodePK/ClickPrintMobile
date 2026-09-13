@@ -4,6 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
+import SecureStore from "../../utils/storage";
 import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../../utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,6 +27,7 @@ const ShopsPage = () => {
 	const [selectedShopId, setSelectedShopId] = useState(null);
 	const [viewMode, setViewMode] = useState("map"); // "map" | "list"
 	const [searchQuery, setSearchQuery] = useState("");
+	const [creatingDraftForShop, setCreatingDraftForShop] = useState(null);
 
 	// Only shops with usable coordinates can be placed on the map.
 	const locatedShops = useMemo(
@@ -68,6 +70,35 @@ const ShopsPage = () => {
 		}
 	};
 
+	const handleNewPrint = async (shopId) => {
+		if (!shopId) return;
+		try {
+			setCreatingDraftForShop(shopId);
+			const token = await SecureStore.getItemAsync("authToken");
+			const draftResponse = await fetch(`${API_BASE_URL}/drafts`, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ shop: shopId }),
+			});
+			const draftData = await draftResponse.json();
+
+			if (!draftResponse.ok) {
+				throw new Error(draftData.message || "Failed to create draft.");
+			}
+
+			const newDraftId = draftData.data.draft._id;
+			router.push(`/upload-document?draftId=${newDraftId}`);
+		} catch (err) {
+			console.error(err);
+			showAlert("Error", "Failed to start document upload.");
+		} finally {
+			setCreatingDraftForShop(null);
+		}
+	};
+
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			{loading ? (
@@ -107,8 +138,10 @@ const ShopsPage = () => {
 								<ShopCallout
 									shop={selectedShop}
 									onClose={() => setSelectedShopId(null)}
-									onMoreDetails={() => goToShopDetails(selectedShop._id)}
+									onNewPrint={() => handleNewPrint(selectedShop._id)}
 									onDirections={() => openShopLocation(selectedShop)}
+									onMoreDetails={() => goToShopDetails(selectedShop._id)}
+									creatingDraft={creatingDraftForShop === selectedShop._id}
 								/>
 							)}
 						</View>
@@ -156,6 +189,8 @@ const ShopsPage = () => {
 											shop={shop}
 											onPress={() => goToShopDetails(shop._id)}
 											onViewLocation={() => openShopLocation(shop)}
+											onNewPrint={() => handleNewPrint(shop._id)}
+											creatingDraft={creatingDraftForShop === shop._id}
 										/>
 									))
 								)}
@@ -195,7 +230,7 @@ const ViewToggle = ({ mode, onChange }) => {
 };
 
 // List row for a shop; mirrors the map callout content but laid out horizontally.
-const ShopListItem = ({ shop, onPress, onViewLocation }) => {
+const ShopListItem = ({ shop, onPress, onViewLocation, onNewPrint, creatingDraft }) => {
 	return (
 		<TouchableOpacity style={styles.shopCard} onPress={onPress} activeOpacity={0.7}>
 			{shop.imageFile ? (
@@ -228,10 +263,27 @@ const ShopListItem = ({ shop, onPress, onViewLocation }) => {
 					</Text>
 				</View>
 
-				<TouchableOpacity style={styles.viewLocationButton} onPress={onViewLocation} activeOpacity={0.7}>
-					<Feather name="map-pin" size={15} color={colors.cardBackground} />
-					<Text style={styles.viewLocationText}>View Location</Text>
-				</TouchableOpacity>
+				<View style={styles.cardButtonsRow}>
+					<TouchableOpacity style={styles.viewLocationButton} onPress={onViewLocation} activeOpacity={0.7}>
+						<Feather name="map-pin" size={15} color={colors.cardBackground} />
+						<Text style={styles.viewLocationText}>Location</Text>
+					</TouchableOpacity>
+					<TouchableOpacity
+						style={[styles.newPrintCardButton, creatingDraft && styles.newPrintCardButtonDisabled]}
+						onPress={(e) => { e.stopPropagation(); onNewPrint(); }}
+						activeOpacity={0.7}
+						disabled={creatingDraft}
+					>
+						{creatingDraft ? (
+							<ActivityIndicator size="small" color={colors.primary} />
+						) : (
+							<>
+								<Feather name="printer" size={15} color={colors.primary} />
+								<Text style={styles.newPrintCardButtonText}>New Print</Text>
+							</>
+						)}
+					</TouchableOpacity>
+				</View>
 			</View>
 
 			<Feather name="chevron-right" size={20} color={colors.textSecondary} />
@@ -242,14 +294,14 @@ const ShopListItem = ({ shop, onPress, onViewLocation }) => {
 // Popup tooltip shown when a pin is tapped. Rendered as a bottom card overlay so the
 // interaction is identical on web (Leaflet) and native (react-native-maps), avoiding
 // the platform quirks of tappable buttons inside native map callouts.
-const ShopCallout = ({ shop, onClose, onMoreDetails, onDirections }) => {
+const ShopCallout = ({ shop, onClose, onNewPrint, onDirections, onMoreDetails, creatingDraft }) => {
 	return (
 		<View style={styles.callout}>
 			<TouchableOpacity style={styles.calloutClose} onPress={onClose} hitSlop={8}>
 				<Feather name="x" size={18} color={colors.textSecondary} />
 			</TouchableOpacity>
 
-			<View style={styles.calloutTop}>
+			<TouchableOpacity style={styles.calloutTop} onPress={onMoreDetails} activeOpacity={0.7}>
 				{shop.imageFile ? (
 					<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.calloutImage} contentFit="cover" transition={200} />
 				) : (
@@ -281,16 +333,28 @@ const ShopCallout = ({ shop, onClose, onMoreDetails, onDirections }) => {
 						)}
 					</View>
 				</View>
-			</View>
+				<Feather name="chevron-right" size={30} color={colors.textSecondary} style={{ alignSelf: "center", marginTop: 15  }} />
+			</TouchableOpacity>
 
 			<View style={styles.calloutActions}>
 				<TouchableOpacity style={styles.directionsButton} onPress={onDirections} activeOpacity={0.8}>
 					<Feather name="navigation" size={15} color={colors.printRequest} />
 					<Text style={styles.directionsButtonText}>Directions</Text>
 				</TouchableOpacity>
-				<TouchableOpacity style={styles.detailsButton} onPress={onMoreDetails} activeOpacity={0.8}>
-					<Text style={styles.detailsButtonText}>More Details</Text>
-					<Feather name="arrow-right" size={16} color={colors.cardBackground} />
+				<TouchableOpacity
+					style={[styles.detailsButton, creatingDraft && { opacity: 0.7 }]}
+					onPress={onNewPrint}
+					activeOpacity={0.8}
+					disabled={creatingDraft}
+				>
+					{creatingDraft ? (
+						<ActivityIndicator color={colors.cardBackground} />
+					) : (
+						<>
+							<Feather name="printer" size={16} color={colors.cardBackground} />
+							<Text style={styles.detailsButtonText}>New Print</Text>
+						</>
+					)}
 				</TouchableOpacity>
 			</View>
 		</View>
@@ -443,23 +507,48 @@ const styles = StyleSheet.create({
 		gap: 6,
 		marginTop: 2,
 	},
+	cardButtonsRow: {
+		flexDirection: "row",
+		gap: 8,
+		marginTop: 5,
+	},
 	viewLocationButton: {
 		backgroundColor: colors.printRequest,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		alignSelf: "flex-start",
+		flex: 1,
 		paddingVertical: 8,
 		paddingHorizontal: 10,
-		marginTop: 5,
 		borderRadius: 15,
 		gap: 4,
-		minWidth: 200,
 	},
 	viewLocationText: {
 		fontSize: 12,
 		fontWeight: "600",
 		color: colors.cardBackground,
+		textAlign: "center",
+	},
+	newPrintCardButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		flex: 1,
+		paddingVertical: 8,
+		paddingHorizontal: 10,
+		borderRadius: 15,
+		gap: 4,
+		borderWidth: 1.5,
+		borderColor: colors.primary,
+		backgroundColor: "rgba(0, 217, 163, 0.06)",
+	},
+	newPrintCardButtonDisabled: {
+		opacity: 0.7,
+	},
+	newPrintCardButtonText: {
+		fontSize: 12,
+		fontWeight: "600",
+		color: colors.primary,
 		textAlign: "center",
 	},
 	centerContainer: {
@@ -549,7 +638,7 @@ const styles = StyleSheet.create({
 	calloutTop: {
 		flexDirection: "row",
 		gap: 14,
-		paddingRight: 24,
+		paddingRight: 28,
 	},
 	calloutImage: {
 		width: 56,
