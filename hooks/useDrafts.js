@@ -1,6 +1,8 @@
 import SecureStore from "../utils/storage";
 import { useCallback, useEffect, useState } from "react";
-import { fetchDrafts } from "../services/fetchDrafts";
+import config from "../config/config";
+
+const API_BASE_URL = config.apiBaseUrl;
 
 export const useDrafts = () => {
 	const [drafts, setDrafts] = useState([]);
@@ -13,12 +15,19 @@ export const useDrafts = () => {
 			setError(null);
 			// Only fetch when a JWT is available; anonymous sessions skip the call.
 			const token = await SecureStore.getItemAsync("authToken");
-			if (!token) {
+			const userId = await SecureStore.getItemAsync("userId");
+			if (!token || !userId) {
 				setDrafts([]);
 				return;
 			}
-			const data = await fetchDrafts();
-			setDrafts(data);
+			const response = await fetch(`${API_BASE_URL}/drafts/user/${userId}`, {
+				headers: {
+					Authorization: `Bearer ${token}`,
+				},
+			});
+			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+			const data = await response.json();
+			setDrafts(data.data?.drafts || []);
 		} catch (err) {
 			setError(err.message || "Failed to fetch drafts");
 			console.error("Error loading drafts:", err);

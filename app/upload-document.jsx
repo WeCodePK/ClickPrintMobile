@@ -8,7 +8,6 @@ import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, T
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
-import { fetchDraft } from "../services/fetchDraft";
 import SecureStore from "../utils/storage";
 import DocumentCard from "./components/uploadDocument/DocumentCard";
 
@@ -37,7 +36,15 @@ const UploadDocument = () => {
 		let active = true;
 		(async () => {
 			try {
-				const draft = await fetchDraft(draftId);
+				const token = await SecureStore.getItemAsync("authToken");
+				const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				});
+				if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+				const data = await response.json();
+				const draft = data.data?.draft || null;
 				if (!active || !draft) return;
 				const existingDocs = (draft.files || []).map((f) => {
 					const originalName = f.file?.name || "Document";

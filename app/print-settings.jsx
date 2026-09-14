@@ -9,7 +9,6 @@ import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
-import { fetchDraft } from "../services/fetchDraft";
 import { DEFAULT_SETTINGS, documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
 import DocumentSettingsForm from "./components/printSettings/DocumentSettingsForm";
 
@@ -81,7 +80,15 @@ const PrintSettings = () => {
 		let active = true;
 		(async () => {
 			try {
-				const draft = await fetchDraft(draftId);
+				const token = await SecureStore.getItemAsync("authToken");
+				const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				});
+				if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+				const data = await response.json();
+				const draft = data.data?.draft || null;
 				if (!active || !draft) return;
 				const docs = documentsFromDraft(draft);
 				if (docs.length > 0) {
