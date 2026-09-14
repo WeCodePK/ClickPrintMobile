@@ -67,7 +67,7 @@ export default {
 			eas: {
 				projectId: "dcfa1e7b-a3c9-4b15-91a9-5a7bba18f0d9"
 			},
-			apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "https://clickprintbackend.wckd.pk/api",
+			apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "https://api.clickprint.pk/api",
 		},
 	},
 };
