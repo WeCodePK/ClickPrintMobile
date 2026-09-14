@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from "rea
 import { colors } from "../../../constants/colors";
 import { useState } from "react";
 
-const DocumentCard = ({ doc, index, onRemove }) => {
+const DocumentCard = ({ doc, index, onRemove, onPreview }) => {
 	const extension = doc.file.name ? doc.file.name.split(".").pop().toUpperCase() : "FILE";
 	const [expanded, setExpanded] = useState(false);
 
@@ -35,19 +35,44 @@ const DocumentCard = ({ doc, index, onRemove }) => {
 					<View style={styles.statusContainer}>
 						<ActivityIndicator size="small" color={colors.primary} />
 					</View>
-				) : doc.status === "success" ? (
-					<View style={styles.statusContainer}>
-						<Feather name="check-circle" size={20} color={colors.primary} />
-					</View>
 				) : doc.status === "failed" ? (
-					<View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+					<View style={styles.actionsContainer}>
 						<Text style={styles.failedText}>Failed</Text>
-						<TouchableOpacity style={styles.removeCardButton} onPress={() => onRemove(index)}>
+						<TouchableOpacity
+							style={styles.removeCardButton}
+							onPress={() => onRemove(index)}
+							activeOpacity={0.7}
+							hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+						>
+							<Feather name="x" size={18} color={colors.printRequest} />
+						</TouchableOpacity>
+					</View>
+				) : doc.fileId ? (
+					<View style={styles.actionsContainer}>
+						<TouchableOpacity
+							style={styles.previewCardButton}
+							onPress={() => onPreview?.(doc.fileId, doc.file?.name || doc.name, doc.file?.numberOfPages)}
+							activeOpacity={0.7}
+							hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+						>
+							<Feather name="eye" size={18} color={colors.primary} />
+						</TouchableOpacity>
+						<TouchableOpacity
+							style={styles.removeCardButton}
+							onPress={() => onRemove(index)}
+							activeOpacity={0.7}
+							hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+						>
 							<Feather name="x" size={18} color={colors.printRequest} />
 						</TouchableOpacity>
 					</View>
 				) : (
-					<TouchableOpacity style={styles.removeCardButton} onPress={() => onRemove(index)}>
+					<TouchableOpacity
+						style={styles.removeCardButton}
+						onPress={() => onRemove(index)}
+						activeOpacity={0.7}
+						hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+					>
 						<Feather name="x" size={18} color={colors.printRequest} />
 					</TouchableOpacity>
 				)}
@@ -101,6 +126,19 @@ const styles = StyleSheet.create({
 	documentFileSize: {
 		fontSize: 12,
 		color: colors.textSecondary,
+	},
+	actionsContainer: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	previewCardButton: {
+		width: 32,
+		height: 32,
+		borderRadius: 8,
+		backgroundColor: "rgba(0, 217, 163, 0.12)",
+		justifyContent: "center",
+		alignItems: "center",
 	},
 	removeCardButton: {
 		width: 32,

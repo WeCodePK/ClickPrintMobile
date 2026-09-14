@@ -10,6 +10,7 @@ import config from "../config/config";
 import { colors } from "../constants/colors";
 import SecureStore from "../utils/storage";
 import DocumentCard from "./components/uploadDocument/DocumentCard";
+import DocumentPreviewModal from "./components/uploadDocument/DocumentPreviewModal";
 
 //----------------------------------- CONSTANTS ------------------------------------//
 
@@ -26,6 +27,7 @@ const UploadDocument = () => {
 	const [uploading, setUploading] = useState(false);
 	const [hydrating, setHydrating] = useState(!!draftId);
 	const [error, setError] = useState(null);
+	const [previewDoc, setPreviewDoc] = useState(null);
 
 	// Resuming an existing draft: pull the already-uploaded files from the
 	// backend so they show up here. We only have their names/ids (not the
@@ -336,7 +338,15 @@ const UploadDocument = () => {
 					{hasDocuments && (
 						<View style={styles.documentsList}>
 							{documents.map((doc, index) => (
-								<DocumentCard key={`${doc.fileId || doc.file?.uri || "doc"}-${index}`} doc={doc} index={index} onRemove={handleRemoveDocument} />
+								<DocumentCard
+									key={`${doc.fileId || doc.file?.uri || "doc"}-${index}`}
+									doc={doc}
+									index={index}
+									onRemove={handleRemoveDocument}
+									onPreview={(fileId, name, numberOfPages) =>
+										setPreviewDoc({ fileId, name, numberOfPages })
+									}
+								/>
 							))}
 						</View>
 					)}
@@ -372,6 +382,14 @@ const UploadDocument = () => {
 				</TouchableOpacity>
 
 			</View>
+
+			<DocumentPreviewModal
+				visible={!!previewDoc}
+				fileId={previewDoc?.fileId}
+				fileName={previewDoc?.name}
+				numberOfPages={previewDoc?.numberOfPages}
+				onClose={() => setPreviewDoc(null)}
+			/>
 		</SafeAreaView>
 	);
 };
