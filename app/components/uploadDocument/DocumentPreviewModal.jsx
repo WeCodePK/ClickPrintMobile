@@ -1,10 +1,8 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
-import { useState } from "react";
 import {
 	ActivityIndicator,
-	Dimensions,
 	Modal,
 	Platform,
 	StyleSheet,
@@ -16,18 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../../../config/config";
 import { colors } from "../../../constants/colors";
 
-// Dynamically resolve native PDF and WebView modules
-let Pdf = null;
 let WebView = null;
-
 if (Platform.OS !== "web") {
-	try {
-		const pdfModule = require("react-native-pdf");
-		Pdf = pdfModule?.default || pdfModule;
-	} catch (err) {
-		console.warn("react-native-pdf load error:", err);
-	}
-
 	try {
 		WebView = require("react-native-webview").WebView;
 	} catch (err) {
@@ -42,18 +30,10 @@ const API_BASE_URL = config.apiBaseUrl;
 //----------------------------------- COMPONENTS -----------------------------------//
 
 const DocumentPreviewModal = ({ visible, fileId, fileName, numberOfPages, onClose }) => {
-	const [useFallbackViewer, setUseFallbackViewer] = useState(false);
-	const [pageCount, setPageCount] = useState(numberOfPages);
-
 	if (!visible || !fileId) return null;
 
 	const fileUrl = `${API_BASE_URL}/files/${fileId}`;
-	const displayedPages = pageCount || numberOfPages;
-
-	const handleClose = () => {
-		setUseFallbackViewer(false);
-		onClose();
-	};
+	const googleDocsUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
 
 	return (
 		<Modal
@@ -61,7 +41,7 @@ const DocumentPreviewModal = ({ visible, fileId, fileName, numberOfPages, onClos
 			transparent={true}
 			animationType="fade"
 			statusBarTranslucent={true}
-			onRequestClose={handleClose}
+			onRequestClose={onClose}
 		>
 			<View style={styles.modalBackdrop}>
 				<SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -76,13 +56,13 @@ const DocumentPreviewModal = ({ visible, fileId, fileName, numberOfPages, onClos
 									{fileName || "Document Preview"}
 								</Text>
 								<Text style={styles.headerSubtitle}>
-									{displayedPages ? `${displayedPages} ${displayedPages === 1 ? "page" : "pages"}` : "PDF Preview"}
+									{numberOfPages ? `${numberOfPages} ${numberOfPages === 1 ? "page" : "pages"}` : "PDF Preview"}
 								</Text>
 							</View>
 						</View>
 						<TouchableOpacity
 							style={styles.closeButton}
-							onPress={handleClose}
+							onPress={onClose}
 							activeOpacity={0.7}
 							hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
 						>
@@ -94,32 +74,13 @@ const DocumentPreviewModal = ({ visible, fileId, fileName, numberOfPages, onClos
 					<View style={styles.viewerContainer}>
 						{Platform.OS === "web" ? (
 							<iframe
-								src={fileUrl}
+								src={googleDocsUrl}
 								style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#121212" }}
 								title={fileName || "Document Preview"}
 							/>
-						) : Pdf && !useFallbackViewer ? (
-							<Pdf
-								source={{ uri: fileUrl, cache: true }}
-								style={styles.pdfView}
-								trustAllCerts={false}
-								onLoadComplete={(numPages) => {
-									if (numPages) setPageCount(numPages);
-								}}
-								onError={(error) => {
-									console.warn("react-native-pdf render error, falling back to embedded viewer:", error);
-									setUseFallbackViewer(true);
-								}}
-								renderActivityIndicator={() => (
-									<View style={styles.spinnerOverlay}>
-										<ActivityIndicator size="large" color={colors.primary} />
-										<Text style={styles.spinnerText}>Loading document...</Text>
-									</View>
-								)}
-							/>
 						) : WebView ? (
 							<WebView
-								source={{ uri: `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}` }}
+								source={{ uri: googleDocsUrl }}
 								style={styles.webView}
 								startInLoadingState={true}
 								renderLoading={() => (
@@ -129,7 +90,13 @@ const DocumentPreviewModal = ({ visible, fileId, fileName, numberOfPages, onClos
 									</View>
 								)}
 							/>
-						) : null}
+						) : (
+							<iframe
+								src={googleDocsUrl}
+								style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#121212" }}
+								title={fileName || "Document Preview"}
+							/>
+						)}
 					</View>
 				</SafeAreaView>
 			</View>
@@ -197,12 +164,6 @@ const styles = StyleSheet.create({
 	},
 	viewerContainer: {
 		flex: 1,
-		backgroundColor: "#121212",
-	},
-	pdfView: {
-		flex: 1,
-		width: Dimensions.get("window").width,
-		height: Dimensions.get("window").height,
 		backgroundColor: "#121212",
 	},
 	webView: {
