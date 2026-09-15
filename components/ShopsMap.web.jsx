@@ -85,7 +85,7 @@ const ShopsMap = ({ shops, selectedShopId, initialRegion, onSelectShop, onDesele
 				);
 				// Minimal light basemap: streets only, no labels (CARTO Positron no-labels).
 				L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png?key=cb1_3jwc_1_d57f25c1f8b23a59300293c7", {
-					maxZoom: 20,
+					maxZoom: 18,
 					subdomains: "abcd"
 				}).addTo(map);
 
