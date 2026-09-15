@@ -3,13 +3,12 @@
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
-import { showAlert } from "../utils/alert";
 import { documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
-import SecureStore from "../utils/storage";
+import { getItemAsync } from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -53,7 +52,6 @@ const formatCurrency = (amount) => `Rs. ${amount}`;
 const DraftDetails = () => {
 	const router = useRouter();
 	const params = useLocalSearchParams();
-	const [submitting, setSubmitting] = useState(false);
 	const insets = useSafeAreaInsets();
 
 	let draft = null;
@@ -62,6 +60,31 @@ const DraftDetails = () => {
 	} catch (e) {
 		console.error("Failed to parse draft param:", e);
 	}
+
+	const [shopName, setShopName] = useState(draft?.shop?.name || "");
+
+	useEffect(() => {
+		const fetchShopName = async () => {
+			const shopId = draft?.shop?._id || (typeof draft?.shop === "string" ? draft.shop : null);
+			if (!draft?.shop?.name && shopId) {
+				try {
+					const token = await getItemAsync("authToken");
+					const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
+						headers: { Authorization: `Bearer ${token}` },
+					});
+					if (response.ok) {
+						const data = await response.json();
+						if (data.success && data.data) {
+							setShopName(data.data.name);
+						}
+					}
+				} catch (error) {
+					console.error("Failed to fetch shop name:", error);
+				}
+			}
+		};
+		fetchShopName();
+	}, [draft]);
 
 	if (!draft) {
 		return (
@@ -84,31 +107,6 @@ const DraftDetails = () => {
 	const cost = draft.cost || {};
 	const files = draft.files || [];
 
-	const [shopName, setShopName] = useState(draft.shop?.name || "");
-
-	useEffect(() => {
-		const fetchShopName = async () => {
-			const shopId = draft.shop?._id || (typeof draft.shop === "string" ? draft.shop : null);
-			if (!draft.shop?.name && shopId) {
-				try {
-					const token = await SecureStore.getItemAsync("authToken");
-					const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
-						headers: { Authorization: `Bearer ${token}` },
-					});
-					if (response.ok) {
-						const data = await response.json();
-						if (data.success && data.data) {
-							setShopName(data.data.name);
-						}
-					}
-				} catch (error) {
-					console.error("Failed to fetch shop name:", error);
-				}
-			}
-		};
-		fetchShopName();
-	}, [draft]);
-
 	//----------------------------------- HANDLERS -----------------------------------//
 
 	// Back returns to shop selection so the user can change the shop; the draft
@@ -128,37 +126,17 @@ const DraftDetails = () => {
 		}
 	};
 
-	const handleSubmitDraft = async () => {
-		try {
-			setSubmitting(true);
-			const token = await SecureStore.getItemAsync("authToken");
-			const response = await fetch(`${API_BASE_URL}/drafts/${draft._id}/submit`, {
-				method: "PATCH",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				},
-			});
-			const data = await response.json();
-			if (response.ok) {
-				
-				console.log("Draft submitted successfully:", data);
-				showAlert("Success", "Your print job has been submitted!", [
-					{
-						text: "OK",
-						onPress: () => router.replace("(tabs)/home"),
-					},
-				]);
-			} else {
-				console.log("Error submitting draft:", data);
-				throw new Error(data.message || "Failed to submit draft.");
-			}
-		} catch (err) {
-			console.error("Error submitting draft:", err);
-			showAlert("Error", err.message || "Failed to submit draft. Please try again.");
-		} finally {
-			setSubmitting(false);
-		}
+	const handlePayUpfront = () => {
+		const shopId = draft?.shop?._id || (typeof draft?.shop === "string" ? draft.shop : null);
+		router.push({
+			pathname: "/topup",
+			params: {
+				shopId: shopId || "",
+				draftId: draft?._id || params.draftId || "",
+				amount: String(cost.total ?? 0),
+				draft: JSON.stringify(draft),
+			},
+		});
 	};
 
 	//----------------------------------- RENDER -----------------------------------//
@@ -259,21 +237,14 @@ const DraftDetails = () => {
 				</View>
 			</ScrollView>
 
-			{/* Footer Submit Button */}
+			{/* Footer Pay Upfront Button */}
 			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
 				<TouchableOpacity
-					style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-					onPress={handleSubmitDraft}
-					disabled={submitting}
+					style={styles.submitButton}
+					onPress={handlePayUpfront}
 				>
-					{submitting ? (
-						<ActivityIndicator size="small" color={colors.cardBackground} />
-					) : (
-						<>
-							<Text style={styles.submitButtonText}>Submit Job</Text>
-							<Feather name="send" size={20} color={colors.cardBackground} />
-						</>
-					)}
+					<Text style={styles.submitButtonText}>Pay Upfront</Text>
+					<Feather name="arrow-right" size={20} color={colors.cardBackground} />
 				</TouchableOpacity>
 			</View>
 		</SafeAreaView>

@@ -1,274 +1,427 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+	ActivityIndicator,
+	Platform,
+	ScrollView,
+	StatusBar,
+	StyleSheet,
+	Text,
+	TouchableOpacity,
+	View,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import PullToRefreshScrollView from "../components/PullToRefreshScrollView";
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { showAlert } from "../utils/alert";
-import SecureStore from "../utils/storage";
+import { getItemAsync } from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
 const API_BASE_URL = config.apiBaseUrl;
 
-const STATUS_CONFIG = {
-	pending: { label: "Pending", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
-	approved: { label: "Approved", color: colors.primary, bg: "rgba(0, 217, 163, 0.12)" },
-	declined: { label: "Declined", color: colors.printRequest, bg: "rgba(255, 139, 123, 0.12)" },
-};
-
-//----------------------------------- HELPERS -----------------------------------//
-
-const formatDateTime = (value) => {
-	if (!value) return "";
-	const d = new Date(value);
-	if (isNaN(d.getTime())) return "";
-	return d.toLocaleString(undefined, {
-		day: "numeric",
-		month: "short",
-		year: "numeric",
-		hour: "numeric",
-		minute: "2-digit",
-		hour12: true,
-	});
-};
-
-// paymentProofFile is populated as { _id, name } by the API, but may be a bare id.
-const getProofFileId = (topup) => {
-	const proof = topup.paymentProofFile;
-	return proof?._id || (typeof proof === "string" ? proof : null);
-};
-
-const getFileUrl = (fileId) => `${API_BASE_URL}/files/${fileId}`;
-
-const formatDayLabel = (d) => {
-	const today = new Date();
-	const yesterday = new Date();
-	yesterday.setDate(today.getDate() - 1);
-	if (d.toDateString() === today.toDateString()) return "Today";
-	if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-	return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-};
-
-// Groups top ups into one section per calendar day, keeping the API's newest-first order.
-const groupTopupsByDate = (topups) => {
-	const groups = new Map();
-	for (const topup of topups) {
-		const value = topup.createdAt || topup.date;
-		const d = value ? new Date(value) : null;
-		const valid = d && !isNaN(d.getTime());
-		const key = valid ? d.toDateString() : "unknown";
-		if (!groups.has(key)) {
-			groups.set(key, { key, label: valid ? formatDayLabel(d) : "Unknown date", items: [] });
-		}
-		groups.get(key).items.push(topup);
-	}
-	return [...groups.values()];
-};
-
 //----------------------------------- COMPONENTS -----------------------------------//
 
-const TopUpWallet = () => {
+const TopUpPage = () => {
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
+	const params = useLocalSearchParams();
 
-	const [topups, setTopups] = useState([]);
-	const [loading, setLoading] = useState(true);
-	const [refreshing, setRefreshing] = useState(false);
-	const [error, setError] = useState(null);
-	const [viewingProofId, setViewingProofId] = useState(null);
-
-	const fetchTopups = useCallback(async () => {
+	let draft = null;
+	if (params.draft) {
 		try {
-			setError(null);
-			const token = await SecureStore.getItemAsync("authToken");
-			const response = await fetch(`${API_BASE_URL}/topups`, {
+			draft = JSON.parse(params.draft);
+		} catch (e) {
+			console.error("Failed to parse draft param:", e);
+		}
+	}
+
+	const draftId = params.draftId || draft?._id || "";
+	const shopId = params.shopId || draft?.shop?._id || (typeof draft?.shop === "string" ? draft.shop : "");
+	const amount = params.amount || String(draft?.cost?.total ?? "0");
+
+	const [shop, setShop] = useState(null);
+	const [wallet, setWallet] = useState(null);
+	const [loadingShop, setLoadingShop] = useState(!!shopId);
+
+	const [pickedImage, setPickedImage] = useState(null);
+	const [uploading, setUploading] = useState(false);
+	const [uploadedFile, setUploadedFile] = useState(null);
+
+	const [submittingJob, setSubmittingJob] = useState(false);
+	const [copied, setCopied] = useState(false);
+
+	// Fetch shop and wallet details via /api/shops/:shopId
+	useEffect(() => {
+		const fetchShopDetails = async () => {
+			if (!shopId) return;
+			try {
+				setLoadingShop(true);
+				const token = await getItemAsync("authToken");
+				const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+				if (response.ok) {
+					const data = await response.json();
+					const shopData = data.data?.shop || data.data;
+					if (shopData) {
+						setShop(shopData);
+						if (shopData.wallet) {
+							setWallet(shopData.wallet);
+						}
+					}
+				}
+			} catch (err) {
+				console.error("Failed to fetch shop details:", err);
+			} finally {
+				setLoadingShop(false);
+			}
+		};
+
+		fetchShopDetails();
+	}, [shopId]);
+
+	// Copy account number
+	const handleCopyNumber = async () => {
+		const num = wallet?.number;
+		if (!num) return;
+		try {
+			await Clipboard.setStringAsync(num);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000);
+		} catch (err) {
+			console.error("Failed to copy account number:", err);
+		}
+	};
+
+	// Image picker for payment proof
+	const handlePickProof = async () => {
+		try {
+			if (Platform.OS !== "web") {
+				const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+				if (!permission.granted) {
+					showAlert("Permission needed", "Please allow photo access to upload a payment screenshot.");
+					return;
+				}
+			}
+			const result = await ImagePicker.launchImageLibraryAsync({
+				mediaTypes: ["images"],
+				quality: 0.8,
+			});
+			if (!result.canceled && result.assets?.length > 0) {
+				setPickedImage(result.assets[0]);
+				setUploadedFile(null);
+			}
+		} catch (err) {
+			console.error("Error picking proof:", err);
+			showAlert("Error", "Failed to pick image. Please try again.");
+		}
+	};
+
+	// Upload payment proof via /api/files
+	const handleUploadProof = async () => {
+		if (!pickedImage) {
+			showAlert("No image selected", "Please choose a payment screenshot to upload.");
+			return;
+		}
+		try {
+			setUploading(true);
+			const token = await getItemAsync("authToken");
+			const formData = new FormData();
+			const fileName =
+				pickedImage.fileName ||
+				`payment-proof.${(pickedImage.uri.split(".").pop() || "jpg").split("?")[0]}`;
+
+			if (Platform.OS === "web") {
+				let filePart = pickedImage.file;
+				if (!filePart) {
+					const res = await fetch(pickedImage.uri);
+					filePart = await res.blob();
+				}
+				formData.append("file", filePart, fileName);
+			} else {
+				formData.append("file", {
+					uri: pickedImage.uri,
+					name: fileName,
+					type: pickedImage.mimeType || "image/jpeg",
+				});
+			}
+			formData.append("convert", "false");
+
+			const response = await fetch(`${API_BASE_URL}/files`, {
+				method: "POST",
+				headers: { Authorization: `Bearer ${token}` },
+				body: formData,
+			});
+			const body = await response.json();
+			if (!response.ok || !body.success) {
+				throw new Error(body.message || "Failed to upload payment proof.");
+			}
+
+			const fileRecord = body.data?.file || body.data;
+			setUploadedFile(fileRecord);
+			showAlert("Proof Uploaded", "Payment proof uploaded successfully! You can now submit your job.");
+		} catch (err) {
+			console.error("Error uploading payment proof:", err);
+			showAlert("Upload Failed", err.message || "Failed to upload payment proof. Please try again.");
+		} finally {
+			setUploading(false);
+		}
+	};
+
+	// Submit Job via /api/drafts/:draftId/submit
+	const handleSubmitJob = async () => {
+		if (!uploadedFile) {
+			showAlert(
+				"Payment Proof Required",
+				"Please upload your payment proof before submitting the job."
+			);
+			return;
+		}
+
+		if (!draftId) {
+			showAlert("Error", "Draft ID is missing. Cannot submit job.");
+			return;
+		}
+
+		try {
+			setSubmittingJob(true);
+			const token = await getItemAsync("authToken");
+			console.log("Submitting draft ID:", draftId);
+			const response = await fetch(`${API_BASE_URL}/drafts/${draftId}/submit`, {
+				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
 				},
 			});
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
 			const data = await response.json();
-			const list = data.data?.topups || data.data || data.topups || [];
-			setTopups(Array.isArray(list) ? list : []);
+			if (response.ok && data.success) {
+				showAlert("Success", "Your print job has been submitted!", [
+					{
+						text: "OK",
+						onPress: () => router.replace("/(tabs)/home"),
+					},
+				]);
+			} else {
+				console.log("Failed to submit draft response:", data);
+				throw new Error(data.message || "Failed to submit job.");
+			}
 		} catch (err) {
-			console.error("Error fetching top ups:", err);
-			setError(err.message || "Failed to load top up requests.");
+			console.error("Error submitting job:", err);
+			showAlert("Error", err.message || "Failed to submit draft. Please try again.");
 		} finally {
-			setLoading(false);
+			setSubmittingJob(false);
 		}
-	}, []);
-
-	useFocusEffect(
-		useCallback(() => {
-			fetchTopups();
-		}, [fetchTopups])
-	);
-
-	const handleRefresh = async () => {
-		setRefreshing(true);
-		await fetchTopups();
-		setRefreshing(false);
 	};
-
-	const handleTopUp = () => {
-		router.push("/topup-amount");
-	};
-
-	const handleTransferToFriends = () => {
-		showAlert("Transfer to Friends functionality to be added soon!");
-	};
-
-	const topupGroups = groupTopupsByDate(topups);
 
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+
+			{/* Header */}
 			<View style={styles.header}>
-				<TouchableOpacity onPress={() => router.replace("/(tabs)/home")} style={styles.backButton}>
+				<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>Topup Wallet</Text>
+				<Text style={styles.headerTitle}>Pay Upfront</Text>
 				<View style={styles.placeholder} />
 			</View>
 
-			<PullToRefreshScrollView
+			<ScrollView
 				style={styles.scrollView}
 				contentContainerStyle={styles.scrollContent}
 				showsVerticalScrollIndicator={false}
-				refreshing={refreshing}
-				onRefresh={handleRefresh}
 			>
-				{/* Top up method options */}
-				<Text style={styles.sectionTitle}>Choose a method</Text>
-
-				<TouchableOpacity style={styles.optionCard} onPress={handleTopUp} activeOpacity={0.8}>
-					<View style={[styles.optionIcon, { backgroundColor: "rgba(59, 158, 255, 0.12)" }]}>
-						<Feather name="zap" size={24} color={colors.creditWallet} />
-					</View>
-					<View style={styles.optionInfo}>
-						<Text style={styles.optionTitle}>Topup through Raast</Text>
-						<Text style={styles.optionSubtitle}>Instant bank transfer via Raast</Text>
-					</View>
-					<Feather name="chevron-right" size={22} color={colors.textSecondary} />
-				</TouchableOpacity>
-
-				<TouchableOpacity style={styles.optionCard} onPress={handleTransferToFriends} activeOpacity={0.8}>
-					<View style={[styles.optionIcon, { backgroundColor: "rgba(0, 217, 163, 0.12)" }]}>
-						<Feather name="send" size={24} color={colors.primary} />
-					</View>
-					<View style={styles.optionInfo}>
-						<Text style={styles.optionTitle}>Transfer to Friends</Text>
-						<Text style={styles.optionSubtitle}>Transfer to another ClickPrint user</Text>
-					</View>
-					<Feather name="chevron-right" size={22} color={colors.textSecondary} />
-				</TouchableOpacity>
-
-				{/* Top up history */}
-				<Text style={[styles.sectionTitle, styles.historyTitle]}>Your requests</Text>
-
-				{loading ? (
-					<View style={styles.loadingContainer}>
-						<ActivityIndicator size="large" color={colors.primary} />
-						<Text style={styles.loadingText}>Loading top up requests...</Text>
-					</View>
-				) : error ? (
-					<View style={styles.emptyContainer}>
-						<Feather name="alert-circle" size={40} color={colors.printRequest} />
-						<Text style={styles.emptyText}>{error}</Text>
-						<TouchableOpacity style={styles.retryButton} onPress={fetchTopups}>
-							<Text style={styles.retryButtonText}>Retry</Text>
-						</TouchableOpacity>
-					</View>
-				) : topups.length === 0 ? (
-					<View style={styles.emptyContainer}>
-						<Feather name="inbox" size={40} color={colors.textSecondary} />
-						<Text style={styles.emptyText}>No top up requests yet</Text>
-					</View>
-				) : (
-					<View style={styles.groups}>
-						{topupGroups.map((group) => (
-							<View key={group.key}>
-								<Text style={styles.groupLabel}>{group.label}</Text>
-								<View style={styles.listCard}>
-									{group.items.map((item, index) => (
-										<TopupItem key={item._id || index} item={item} isLast={index === group.items.length - 1} onOpenProof={setViewingProofId} />
-									))}
-								</View>
-							</View>
-						))}
-					</View>
-				)}
-			</PullToRefreshScrollView>
-
-			<ProofViewer fileId={viewingProofId} onClose={() => setViewingProofId(null)} />
-		</SafeAreaView>
-	);
-};
-
-const TopupItem = ({ item, isLast, onOpenProof }) => {
-	const statusKey = (item.status || "pending").toLowerCase();
-	const statusConfig = STATUS_CONFIG[statusKey] || { label: item.status || "Pending", color: colors.textSecondary, bg: colors.background };
-	const shopName = item.shop?.name;
-	const date = formatDateTime(item.createdAt || item.date);
-	const proofFileId = getProofFileId(item);
-
-	return (
-		<TouchableOpacity
-			style={[styles.topupRow, !isLast && styles.topupRowBorder]}
-			onPress={() => onOpenProof(proofFileId)}
-			disabled={!proofFileId}
-			activeOpacity={0.6}
-		>
-			{proofFileId ? (
-				<Image source={{ uri: getFileUrl(proofFileId) }} style={styles.topupProof} contentFit="cover" transition={200} />
-			) : (
-				<View style={styles.topupIcon}>
-					<Feather name="arrow-down" size={18} color={colors.primary} />
-				</View>
-			)}
-			<View style={styles.topupInfo}>
-				<Text style={styles.topupAmount}>Rs. {item.amount}</Text>
-				<View style={styles.topupMetaRow}>
-					{shopName ? (
-						<>
-							<Text style={styles.topupMeta}>{shopName}</Text>
-							{date ? <Text style={styles.topupDot}> • </Text> : null}
-						</>
+				{/* Upfront Amount Summary */}
+				<View style={styles.amountCard}>
+					<Text style={styles.amountLabel}>Total Amount to Pay</Text>
+					<Text style={styles.amountValue}>Rs. {amount}</Text>
+					{shop?.name ? <Text style={styles.amountShop}>Shop: {shop.name}</Text> : null}
+					{draft?.files?.length ? (
+						<Text style={styles.amountFiles}>
+							{draft.files.length} document{draft.files.length !== 1 ? "s" : ""}
+						</Text>
 					) : null}
-					{date ? <Text style={styles.topupMeta}>{date}</Text> : null}
 				</View>
-			</View>
-			<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-				<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
-			</View>
-		</TouchableOpacity>
-	);
-};
 
-// Full-screen viewer for a top up's payment proof. Tap anywhere to close.
-const ProofViewer = ({ fileId, onClose }) => {
-	const insets = useSafeAreaInsets();
+				{/* Shop Wallet Section matching screenshot */}
+				<View style={styles.walletSection}>
+					<View style={styles.walletHeaderRow}>
+						<View style={styles.walletIconContainer}>
+							<Feather name="credit-card" size={20} color="#00D9A3" />
+						</View>
+						<View style={styles.walletHeaderTexts}>
+							<Text style={styles.walletTitle}>Wallet</Text>
+							<Text style={styles.walletSubtitle}>
+								Transfer your upfront payment to the shop&apos;s account below:
+							</Text>
+						</View>
+					</View>
 
-	return (
-		<Modal visible={!!fileId} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-			<Pressable style={styles.viewerBackdrop} onPress={onClose}>
-				{/* Sits behind the image, so it is covered once the image loads */}
-				<ActivityIndicator size="large" color="#FFFFFF" style={styles.viewerSpinner} />
-				{fileId ? <Image source={{ uri: getFileUrl(fileId) }} style={styles.viewerImage} contentFit="contain" transition={200} /> : null}
-				<TouchableOpacity style={[styles.viewerClose, { top: insets.top + 12 }]} onPress={onClose}>
-					<Feather name="x" size={22} color="#FFFFFF" />
+					{loadingShop ? (
+						<View style={styles.loadingShopBox}>
+							<ActivityIndicator size="small" color={colors.primary} />
+							<Text style={styles.loadingShopText}>Loading shop wallet details...</Text>
+						</View>
+					) : (
+						<>
+							{/* Row 1: Bank / Wallet Provider */}
+							<Text style={styles.fieldLabel}>BANK / WALLET PROVIDER</Text>
+							<View style={styles.fieldBox}>
+								<Text style={styles.fieldValue}>
+									{wallet?.bank || shop?.name || "Not specified"}
+								</Text>
+							</View>
+
+							{/* Row 2: Account Title (Separate Row) */}
+							<Text style={styles.fieldLabel}>ACCOUNT TITLE</Text>
+							<View style={styles.fieldBox}>
+								<Text style={styles.fieldValue} numberOfLines={1} ellipsizeMode="tail">
+									{wallet?.title || "Not specified"}
+								</Text>
+							</View>
+
+							{/* Row 3: IBAN / Account Number (Separate Row) */}
+							<Text style={styles.fieldLabel}>IBAN / ACCOUNT NUMBER</Text>
+							<View style={[styles.fieldBox, styles.numberBox]}>
+								<Text style={styles.fieldValue} numberOfLines={1} ellipsizeMode="middle">
+									{wallet?.number || "Not specified"}
+								</Text>
+								{wallet?.number ? (
+									<TouchableOpacity
+										onPress={handleCopyNumber}
+										style={styles.copyIconButton}
+										activeOpacity={0.7}
+									>
+										<Feather
+											name={copied ? "check" : "copy"}
+											size={18}
+											color={copied ? colors.primary : colors.textSecondary}
+										/>
+									</TouchableOpacity>
+								) : null}
+							</View>
+
+							{/* Explanatory note */}
+							<Text style={styles.supportNote}>
+								Supports 24-character IBAN, 8–20 digit bank account number, or mobile wallet (e.g. 03XXXXXXXXX).
+							</Text>
+						</>
+					)}
+				</View>
+
+				{/* Payment Proof Section */}
+				<View style={styles.proofSection}>
+					<View style={styles.sectionHeader}>
+						<Feather name="file-text" size={18} color={colors.primary} />
+						<Text style={styles.sectionTitle}>Payment Proof</Text>
+					</View>
+
+					{pickedImage ? (
+						<View style={styles.proofPreviewCard}>
+							<Image
+								source={{ uri: pickedImage.uri }}
+								style={styles.proofImagePreview}
+								contentFit="cover"
+							/>
+							<View style={styles.proofDetails}>
+								<Text style={styles.proofFileName} numberOfLines={1}>
+									{pickedImage.fileName || "payment-proof.jpg"}
+								</Text>
+								{uploadedFile ? (
+									<View style={styles.uploadedBadge}>
+										<Feather name="check-circle" size={14} color={colors.primary} />
+										<Text style={styles.uploadedBadgeText}>Proof Uploaded</Text>
+									</View>
+								) : (
+									<Text style={styles.pendingUploadText}>Not uploaded yet</Text>
+								)}
+								<TouchableOpacity
+									style={styles.changeImageButton}
+									onPress={handlePickProof}
+									disabled={uploading}
+								>
+									<Text style={styles.changeImageText}>Change Image</Text>
+								</TouchableOpacity>
+							</View>
+						</View>
+					) : (
+						<TouchableOpacity
+							style={styles.pickButton}
+							onPress={handlePickProof}
+							activeOpacity={0.8}
+						>
+							<View style={styles.pickIconWrapper}>
+								<Feather name="image" size={24} color={colors.primary} />
+							</View>
+							<Text style={styles.pickButtonTitle}>Select Payment Screenshot</Text>
+							<Text style={styles.pickButtonSub}>
+								Attach a screenshot of your bank transfer or mobile wallet payment
+							</Text>
+						</TouchableOpacity>
+					)}
+
+					{/* Upload Payment Proof Button */}
+					{pickedImage && !uploadedFile ? (
+						<TouchableOpacity
+							style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+							onPress={handleUploadProof}
+							disabled={uploading}
+							activeOpacity={0.8}
+						>
+							{uploading ? (
+								<ActivityIndicator size="small" color={colors.cardBackground} />
+							) : (
+								<>
+									<Feather name="upload" size={18} color={colors.cardBackground} />
+									<Text style={styles.uploadButtonText}>Upload Payment Proof</Text>
+								</>
+							)}
+						</TouchableOpacity>
+					) : null}
+
+					{uploadedFile ? (
+						<View style={styles.uploadSuccessBanner}>
+							<Feather name="check" size={18} color={colors.primary} />
+							<Text style={styles.uploadSuccessText}>
+								Payment proof uploaded. Ready to submit job!
+							</Text>
+						</View>
+					) : null}
+				</View>
+			</ScrollView>
+
+			{/* Footer with Submit Job Button */}
+			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+				<TouchableOpacity
+					style={[
+						styles.submitJobButton,
+						(!uploadedFile || submittingJob) && styles.submitJobButtonDisabled,
+					]}
+					onPress={handleSubmitJob}
+					disabled={!uploadedFile || submittingJob}
+					activeOpacity={0.8}
+				>
+					{submittingJob ? (
+						<ActivityIndicator size="small" color={colors.cardBackground} />
+					) : (
+						<>
+							<Text style={styles.submitJobButtonText}>Submit Job</Text>
+							<Feather name="send" size={20} color={colors.cardBackground} />
+						</>
+					)}
 				</TouchableOpacity>
-			</Pressable>
-		</Modal>
+			</View>
+		</SafeAreaView>
 	);
 };
 
@@ -284,7 +437,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 20,
-		paddingVertical: 12,
+		paddingVertical: 14,
 		backgroundColor: colors.cardBackground,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
@@ -308,24 +461,14 @@ const styles = StyleSheet.create({
 	},
 	scrollContent: {
 		padding: 20,
-		paddingBottom: 40,
+		paddingBottom: 140,
 	},
-	sectionTitle: {
-		fontSize: 15,
-		fontWeight: "700",
-		color: colors.textPrimary,
-		marginBottom: 14,
-	},
-	historyTitle: {
-		marginTop: 28,
-	},
-	optionCard: {
-		flexDirection: "row",
-		alignItems: "center",
+	amountCard: {
 		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		padding: 16,
-		marginBottom: 14,
+		borderRadius: 18,
+		padding: 20,
+		alignItems: "center",
+		marginBottom: 20,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 		shadowColor: colors.shadowLight,
@@ -333,163 +476,298 @@ const styles = StyleSheet.create({
 		shadowOpacity: 1,
 		shadowRadius: 8,
 		elevation: 2,
-		gap: 14,
 	},
-	optionIcon: {
-		width: 48,
-		height: 48,
-		borderRadius: 14,
+	amountLabel: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: colors.textSecondary,
+		textTransform: "uppercase",
+		letterSpacing: 0.5,
+		marginBottom: 6,
+	},
+	amountValue: {
+		fontSize: 32,
+		fontWeight: "800",
+		color: colors.textPrimary,
+	},
+	amountShop: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: colors.primaryDark,
+		marginTop: 6,
+	},
+	amountFiles: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		marginTop: 4,
+	},
+	walletSection: {
+		backgroundColor: "#F8FAFC",
+		borderRadius: 18,
+		padding: 18,
+		marginBottom: 20,
+		borderWidth: 1,
+		borderColor: "#E2E8F0",
+		shadowColor: colors.shadowLight,
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 1,
+		shadowRadius: 8,
+		elevation: 2,
+	},
+	walletHeaderRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		marginBottom: 18,
+		gap: 12,
+	},
+	walletIconContainer: {
+		width: 44,
+		height: 44,
+		borderRadius: 12,
+		backgroundColor: "#E6FBF5",
+		borderWidth: 1,
+		borderColor: "#A7F3D0",
 		justifyContent: "center",
 		alignItems: "center",
 	},
-	optionInfo: {
+	walletHeaderTexts: {
 		flex: 1,
 	},
-	optionTitle: {
+	walletTitle: {
+		fontSize: 16,
+		fontWeight: "700",
+		color: "#1E293B",
+	},
+	walletSubtitle: {
+		fontSize: 12,
+		color: "#64748B",
+		marginTop: 2,
+		lineHeight: 16,
+	},
+	loadingShopBox: {
+		paddingVertical: 20,
+		alignItems: "center",
+		gap: 8,
+	},
+	loadingShopText: {
+		fontSize: 13,
+		color: colors.textSecondary,
+	},
+	fieldLabel: {
+		fontSize: 11,
+		fontWeight: "700",
+		color: "#64748B",
+		letterSpacing: 0.5,
+		textTransform: "uppercase",
+		marginBottom: 6,
+	},
+	fieldBox: {
+		backgroundColor: "#FFFFFF",
+		borderRadius: 12,
+		borderWidth: 1,
+		borderColor: "#E2E8F0",
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		marginBottom: 14,
+		justifyContent: "center",
+	},
+	numberBox: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+	},
+	fieldValue: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: "#1E293B",
+	},
+	copyIconButton: {
+		padding: 4,
+		marginLeft: 4,
+	},
+	supportNote: {
+		fontSize: 11,
+		color: "#94A3B8",
+		lineHeight: 16,
+		marginTop: -4,
+	},
+	proofSection: {
+		backgroundColor: colors.cardBackground,
+		borderRadius: 18,
+		padding: 18,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+		shadowColor: colors.shadowLight,
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 1,
+		shadowRadius: 8,
+		elevation: 2,
+		marginBottom: 20,
+	},
+	sectionHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		marginBottom: 14,
+	},
+	sectionTitle: {
 		fontSize: 16,
 		fontWeight: "700",
 		color: colors.textPrimary,
-		marginBottom: 4,
 	},
-	optionSubtitle: {
-		fontSize: 13,
-		color: colors.textSecondary,
-		lineHeight: 18,
-	},
-	loadingContainer: {
-		paddingVertical: 40,
-		justifyContent: "center",
-		alignItems: "center",
-		gap: 12,
-	},
-	loadingText: {
-		fontSize: 14,
-		color: colors.textSecondary,
-	},
-	emptyContainer: {
-		paddingVertical: 40,
-		justifyContent: "center",
-		alignItems: "center",
-		gap: 12,
-	},
-	emptyText: {
-		fontSize: 15,
-		color: colors.textSecondary,
-		textAlign: "center",
-	},
-	retryButton: {
-		backgroundColor: colors.primary,
-		paddingHorizontal: 24,
-		paddingVertical: 10,
-		borderRadius: 12,
-		marginTop: 4,
-	},
-	retryButtonText: {
-		fontSize: 14,
-		fontWeight: "600",
-		color: colors.cardBackground,
-	},
-	groups: {
-		gap: 18,
-	},
-	groupLabel: {
-		fontSize: 13,
-		fontWeight: "600",
-		color: colors.textSecondary,
-		marginBottom: 8,
-		marginLeft: 4,
-	},
-	listCard: {
-		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		paddingHorizontal: 4,
-		borderWidth: 1,
+	pickButton: {
+		borderWidth: 1.5,
+		borderStyle: "dashed",
 		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
-	},
-	topupRow: {
-		flexDirection: "row",
+		borderRadius: 14,
+		padding: 24,
 		alignItems: "center",
-		paddingVertical: 14,
-		paddingHorizontal: 12,
-		gap: 12,
+		backgroundColor: "#FAFBFC",
 	},
-	topupRowBorder: {
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
-	},
-	topupIcon: {
-		width: 40,
-		height: 40,
-		borderRadius: 10,
-		backgroundColor: "rgba(0, 217, 163, 0.10)",
+	pickIconWrapper: {
+		width: 52,
+		height: 52,
+		borderRadius: 14,
+		backgroundColor: "rgba(0, 217, 163, 0.12)",
 		justifyContent: "center",
 		alignItems: "center",
+		marginBottom: 10,
 	},
-	topupInfo: {
-		flex: 1,
-	},
-	topupAmount: {
+	pickButtonTitle: {
 		fontSize: 15,
 		fontWeight: "700",
 		color: colors.textPrimary,
 		marginBottom: 4,
 	},
-	topupMetaRow: {
+	pickButtonSub: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		textAlign: "center",
+		lineHeight: 16,
+	},
+	proofPreviewCard: {
 		flexDirection: "row",
 		alignItems: "center",
+		backgroundColor: "#FAFBFC",
+		borderRadius: 14,
+		padding: 12,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+		gap: 12,
 	},
-	topupMeta: {
-		fontSize: 13,
-		color: colors.textSecondary,
+	proofImagePreview: {
+		width: 70,
+		height: 70,
+		borderRadius: 10,
+		backgroundColor: "#E2E8F0",
 	},
-	topupDot: {
-		fontSize: 13,
-		color: colors.textSecondary,
-		opacity: 0.5,
+	proofDetails: {
+		flex: 1,
 	},
-	statusBadge: {
-		paddingHorizontal: 10,
-		paddingVertical: 4,
-		borderRadius: 20,
+	proofFileName: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: colors.textPrimary,
+		marginBottom: 4,
 	},
-	statusText: {
+	uploadedBadge: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
+		marginTop: 2,
+	},
+	uploadedBadgeText: {
 		fontSize: 12,
 		fontWeight: "600",
+		color: colors.primary,
 	},
-	topupProof: {
-		width: 40,
-		height: 40,
-		borderRadius: 10,
-		backgroundColor: colors.background,
+	pendingUploadText: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		marginTop: 2,
 	},
-	viewerBackdrop: {
+	changeImageButton: {
+		marginTop: 8,
+	},
+	changeImageText: {
+		fontSize: 12,
+		fontWeight: "600",
+		color: colors.creditWallet,
+	},
+	uploadButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: colors.printRequest,
+		borderRadius: 14,
+		paddingVertical: 14,
+		marginTop: 14,
+		gap: 8,
+	},
+	uploadButtonDisabled: {
+		opacity: 0.6,
+	},
+	uploadButtonText: {
+		fontSize: 15,
+		fontWeight: "700",
+		color: colors.cardBackground,
+	},
+	uploadSuccessBanner: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		backgroundColor: "rgba(0, 217, 163, 0.12)",
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		marginTop: 14,
+	},
+	uploadSuccessText: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: colors.primaryDark,
 		flex: 1,
-		backgroundColor: "rgba(0, 0, 0, 0.92)",
-		justifyContent: "center",
-		alignItems: "center",
 	},
-	viewerSpinner: {
+	footer: {
 		position: "absolute",
+		bottom: 0,
+		left: 0,
+		right: 0,
+		backgroundColor: colors.cardBackground,
+		paddingHorizontal: 20,
+		paddingTop: 16,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
+		shadowColor: colors.shadowLight,
+		shadowOffset: { width: 0, height: -4 },
+		shadowOpacity: 1,
+		shadowRadius: 12,
+		elevation: 8,
 	},
-	viewerImage: {
-		width: "100%",
-		height: "100%",
-	},
-	viewerClose: {
-		position: "absolute",
-		right: 16,
-		width: 40,
-		height: 40,
-		borderRadius: 20,
-		backgroundColor: "rgba(255, 255, 255, 0.15)",
-		justifyContent: "center",
+	submitJobButton: {
+		flexDirection: "row",
 		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: colors.printRequest,
+		borderRadius: 16,
+		paddingVertical: 16,
+		gap: 10,
+		shadowColor: colors.shadowPrimary,
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 1,
+		shadowRadius: 12,
+		elevation: 4,
+	},
+	submitJobButtonDisabled: {
+		backgroundColor: colors.borderLight,
+		shadowOpacity: 0,
+		elevation: 0,
+	},
+	submitJobButtonText: {
+		fontSize: 16,
+		fontWeight: "700",
+		color: colors.cardBackground,
 	},
 });
 
-export default TopUpWallet;
+export default TopUpPage;
