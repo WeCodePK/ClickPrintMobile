@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { BackHandler, Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import appLogo from "../assets/icon.png";
+import config from "../config/config";
 import { colors } from "../constants/colors";
 
 
@@ -48,6 +49,7 @@ const AboutPage = () => {
 					</View>
 					<Text style={styles.appName}>ClickPrint</Text>
 					<Text style={styles.appVersion}>Version 1.0.0</Text>
+					<Text style={styles.appVersion}>Build Number: {config.buildNumber}</Text>
 				</View>
 
 				<View style={styles.descriptionSection}>

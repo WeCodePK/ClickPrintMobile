@@ -1,7 +1,9 @@
 // Service worker for the Click Print PWA.
-// Bump CACHE_VERSION whenever you want clients to drop their old cache.
-const CACHE_VERSION = "v1";
-const CACHE_NAME = `clickprint-${CACHE_VERSION}`;
+// BUILD_SHA is replaced with the git commit SHA by scripts/build-web.js. A new
+// build changes these bytes, so the browser installs the new worker and the
+// activate handler below drops the previous build's cache.
+const BUILD_SHA = "__COMMIT_SHA__";
+const CACHE_NAME = `clickprint-${BUILD_SHA}`;
 
 // Take control as soon as the new worker is installed.
 self.addEventListener("install", (event) => {
