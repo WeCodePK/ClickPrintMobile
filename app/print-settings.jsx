@@ -3,7 +3,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import SecureStore from "../utils/storage";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -56,6 +56,29 @@ const PrintSettings = () => {
 
 	const [currentDocIndex, setCurrentDocIndex] = useState(0);
 	const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+
+	const tabsScrollViewRef = useRef(null);
+	const tabLayoutsRef = useRef({});
+	const tabsContainerWidthRef = useRef(0);
+
+	// Auto-scroll the tabs ScrollView so the active document tab stays centered and visible in view
+	useEffect(() => {
+		const scrollToCurrentDoc = () => {
+			const layout = tabLayoutsRef.current[currentDocIndex];
+			if (layout && tabsScrollViewRef.current) {
+				const containerWidth = tabsContainerWidthRef.current || 0;
+				const targetX = Math.max(0, layout.x - (containerWidth - layout.width) / 2);
+				tabsScrollViewRef.current.scrollTo({
+					x: targetX,
+					animated: true,
+				});
+			}
+		};
+
+		scrollToCurrentDoc();
+		const timer = setTimeout(scrollToCurrentDoc, 60);
+		return () => clearTimeout(timer);
+	}, [currentDocIndex]);
 
 	// allSegments[docIndex] is an array of segments (page-range groups); each
 	// segment is a full settings object. A document with no split is just one
@@ -322,8 +345,14 @@ const PrintSettings = () => {
 			{/* Document tabs — direct access to each file, with a completeness dot.
 			    Only shown when there's more than one document. */}
 			{numberOfDocuments > 1 && !hydrating && (
-				<View style={styles.tabsWrapper}>
+				<View
+					style={styles.tabsWrapper}
+					onLayout={(e) => {
+						tabsContainerWidthRef.current = e.nativeEvent.layout.width;
+					}}
+				>
 					<ScrollView
+						ref={tabsScrollViewRef}
 						horizontal
 						showsHorizontalScrollIndicator={false}
 						contentContainerStyle={styles.tabsContent}
@@ -337,6 +366,9 @@ const PrintSettings = () => {
 									key={doc.fileId || index}
 									style={[styles.tab, active && styles.tabActive]}
 									onPress={() => handleSelectDocument(index)}
+									onLayout={(e) => {
+										tabLayoutsRef.current[index] = e.nativeEvent.layout;
+									}}
 									activeOpacity={0.8}
 								>
 									<View style={[styles.tabDot, complete ? styles.tabDotComplete : styles.tabDotPending]} />

@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
 		width: "100%",
 	},
 	buttonPrimary: {
-		backgroundColor: colors.primary,
+		backgroundColor: colors.printRequest,
 	},
 	buttonCancel: {
 		backgroundColor: colors.background,
