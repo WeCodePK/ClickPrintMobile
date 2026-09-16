@@ -167,7 +167,7 @@ const PrintSettings = () => {
 	// document, so identical assignments only need configuring once.
 	const handleCopyToAll = () => {
 		if (numberOfDocuments <= 1) return;
-		showAlert("Copy to all documents", `Apply these settings to all ${numberOfDocuments} documents? This replaces their current settings.`, [
+		showAlert("Apply to all documents", `Apply these settings to all ${numberOfDocuments} documents? This replaces their current settings.`, [
 			{ text: "Cancel", style: "cancel" },
 			{
 				text: "Apply",
@@ -177,6 +177,26 @@ const PrintSettings = () => {
 				},
 			},
 		]);
+	};
+
+	const isLastDocument = currentDocIndex >= numberOfDocuments - 1;
+
+	const handleProceedToNext = () => {
+		// Validate current document segments before moving forward
+		const currentDocSegs = allSegments[currentDocIndex] || [];
+		const split = currentDocSegs.length > 1;
+		for (let j = 0; j < currentDocSegs.length; j++) {
+			if (!isSegmentComplete(currentDocSegs[j], split)) {
+				setCurrentSegmentIndex(j);
+				const where = split ? `part ${j + 1} of document ${currentDocIndex + 1}` : `document ${currentDocIndex + 1}`;
+				showAlert("Incomplete Settings", `Please complete the settings (including page range) for ${where}.`);
+				return;
+			}
+		}
+		if (currentDocIndex < numberOfDocuments - 1) {
+			setCurrentDocIndex((prev) => prev + 1);
+			setCurrentSegmentIndex(0);
+		}
 	};
 
 	//--------------------------------------- SUBMIT --------------------------------------//
@@ -354,7 +374,8 @@ const PrintSettings = () => {
 					isSplit={isSplit}
 					showCopyToAll={numberOfDocuments > 1}
 					onCopyToAll={handleCopyToAll}
-					onContinue={handleContinue}
+					onContinue={isLastDocument ? handleContinue : handleProceedToNext}
+					continueText={isLastDocument ? "Review and continue" : "Proceed to next document"}
 					loading={submitting}
 					error={null}
 				/>

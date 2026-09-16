@@ -65,6 +65,7 @@ const DocumentSettingsForm = ({
 	showCopyToAll = false,
 	onCopyToAll,
 	onContinue,
+	continueText,
 	loading,
 	error,
 }) => {
@@ -547,7 +548,7 @@ const DocumentSettingsForm = ({
 				{showCopyToAll && (
 					<TouchableOpacity style={styles.copyAllButton} onPress={onCopyToAll} disabled={isActionDisabled()}>
 						<Feather name="copy" size={16} color={colors.textSecondary} />
-						<Text style={styles.copyAllText}>Copy these settings to all documents</Text>
+						<Text style={styles.copyAllText}>Apply these settings to all documents</Text>
 					</TouchableOpacity>
 				)}
 
@@ -561,7 +562,7 @@ const DocumentSettingsForm = ({
 						<ActivityIndicator size="small" color={colors.cardBackground} />
 					) : (
 						<>
-							<Text style={styles.submitButtonText}>Review &amp; Continue</Text>
+							<Text style={styles.submitButtonText}>{continueText || "Review and continue"}</Text>
 							<Feather name="arrow-right" size={20} color={colors.cardBackground} />
 						</>
 					)}
