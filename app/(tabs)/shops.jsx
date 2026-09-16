@@ -278,7 +278,7 @@ const ShopListItem = ({ shop, onPress, onViewLocation, onNewPrint, creatingDraft
 							<ActivityIndicator size="small" color={colors.primary} />
 						) : (
 							<>
-								<Feather name="printer" size={15} color={colors.primary} />
+								<Feather name="printer" size={15} color={colors.cardBackground} />
 								<Text style={styles.newPrintCardButtonText}>New Print</Text>
 							</>
 						)}
@@ -338,7 +338,7 @@ const ShopCallout = ({ shop, onClose, onNewPrint, onDirections, onMoreDetails, c
 
 			<View style={styles.calloutActions}>
 				<TouchableOpacity style={styles.directionsButton} onPress={onDirections} activeOpacity={0.8}>
-					<Feather name="navigation" size={15} color={colors.printRequest} />
+					<Feather name="navigation" size={15} color={colors.cardBackground} />
 					<Text style={styles.directionsButtonText}>Directions</Text>
 				</TouchableOpacity>
 				<TouchableOpacity
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
 		gap: 4,
 		borderWidth: 1.5,
 		borderColor: colors.primary,
-		backgroundColor: "rgba(0, 217, 163, 0.06)",
+		backgroundColor: colors.primary
 	},
 	newPrintCardButtonDisabled: {
 		opacity: 0.7,
@@ -548,8 +548,9 @@ const styles = StyleSheet.create({
 	newPrintCardButtonText: {
 		fontSize: 12,
 		fontWeight: "600",
-		color: colors.primary,
+		color: colors.cardBackground,
 		textAlign: "center",
+		
 	},
 	centerContainer: {
 		flex: 1,
@@ -711,20 +712,19 @@ const styles = StyleSheet.create({
 		marginTop: 16,
 	},
 	directionsButton: {
+		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 6,
 		paddingVertical: 11,
-		paddingHorizontal: 14,
 		borderRadius: 12,
-		borderWidth: 1.5,
-		borderColor: colors.printRequest,
+		backgroundColor: colors.printRequest,
 	},
 	directionsButtonText: {
 		fontSize: 14,
-		fontWeight: "600",
-		color: colors.printRequest,
+		fontWeight: "700",
+		color: colors.cardBackground,
 	},
 	detailsButton: {
 		flex: 1,
@@ -734,7 +734,7 @@ const styles = StyleSheet.create({
 		gap: 6,
 		paddingVertical: 11,
 		borderRadius: 12,
-		backgroundColor: colors.printRequest,
+		backgroundColor: colors.primary,
 	},
 	detailsButtonText: {
 		fontSize: 14,
