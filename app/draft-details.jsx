@@ -3,10 +3,19 @@
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+	ActivityIndicator,
+	ScrollView,
+	StatusBar,
+	StyleSheet,
+	Text,
+	TouchableOpacity,
+	View,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { showAlert } from "../utils/alert";
 import { documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
 import { getItemAsync } from "../utils/storage";
 
@@ -61,30 +70,44 @@ const DraftDetails = () => {
 		console.error("Failed to parse draft param:", e);
 	}
 
+	const shopId = draft?.shop?._id || (typeof draft?.shop === "string" ? draft.shop : null);
+	// The checked draft can arrive with the shop unpopulated (id only) or without
+	// the COD limit, so the shop record is fetched whenever either is missing.
+	const needsShopFetch =
+		!!shopId && (!draft?.shop?.name || typeof draft?.shop?.codLimit !== "number");
+
 	const [shopName, setShopName] = useState(draft?.shop?.name || "");
+	const [codLimit, setCodLimit] = useState(
+		typeof draft?.shop?.codLimit === "number" ? draft.shop.codLimit : null
+	);
+	const [loadingShop, setLoadingShop] = useState(needsShopFetch);
+	const [paymentMethod, setPaymentMethod] = useState(null);
+	const [submitting, setSubmitting] = useState(false);
 
 	useEffect(() => {
-		const fetchShopName = async () => {
-			const shopId = draft?.shop?._id || (typeof draft?.shop === "string" ? draft.shop : null);
-			if (!draft?.shop?.name && shopId) {
-				try {
-					const token = await getItemAsync("authToken");
-					const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
-						headers: { Authorization: `Bearer ${token}` },
-					});
-					if (response.ok) {
-						const data = await response.json();
-						if (data.success && data.data) {
-							setShopName(data.data.name);
-						}
+		const fetchShop = async () => {
+			if (!needsShopFetch) return;
+			try {
+				setLoadingShop(true);
+				const token = await getItemAsync("authToken");
+				const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+				if (response.ok) {
+					const data = await response.json();
+					if (data.success && data.data) {
+						setShopName(data.data.name);
+						setCodLimit(typeof data.data.codLimit === "number" ? data.data.codLimit : null);
 					}
-				} catch (error) {
-					console.error("Failed to fetch shop name:", error);
 				}
+			} catch (error) {
+				console.error("Failed to fetch shop details:", error);
+			} finally {
+				setLoadingShop(false);
 			}
 		};
-		fetchShopName();
-	}, [draft]);
+		fetchShop();
+	}, [shopId]);
 
 	if (!draft) {
 		return (
@@ -107,6 +130,21 @@ const DraftDetails = () => {
 	const cost = draft.cost || {};
 	const files = draft.files || [];
 
+	// COD is offered only while the job total stays under the shop's limit; an
+	// unknown limit (shop without one, or a failed fetch) keeps the option off.
+	const total = Number(cost.total ?? 0);
+	const codAllowed = typeof codLimit === "number" && total < codLimit;
+	// With COD unavailable there is nothing to choose, so upfront is implied.
+	const selectedMethod = codAllowed ? paymentMethod : "upfront";
+
+	const codSubLabel = loadingShop
+		? "Checking availability..."
+		: typeof codLimit !== "number"
+			? "Not available for this shop"
+			: codAllowed
+				? "Pay at the shop when you collect"
+				: `Only for orders under ${formatCurrency(codLimit)}`;
+
 	//----------------------------------- HANDLERS -----------------------------------//
 
 	// Back returns to shop selection so the user can change the shop; the draft
@@ -127,7 +165,6 @@ const DraftDetails = () => {
 	};
 
 	const handlePayUpfront = () => {
-		const shopId = draft?.shop?._id || (typeof draft?.shop === "string" ? draft.shop : null);
 		router.push({
 			pathname: "/topup",
 			params: {
@@ -137,6 +174,52 @@ const DraftDetails = () => {
 				draft: JSON.stringify(draft),
 			},
 		});
+	};
+
+	// COD needs no payment proof, so the draft is submitted straight from here.
+	const handleCashOnDelivery = async () => {
+		const targetDraftId = draft?._id || params.draftId || "";
+		if (!targetDraftId) {
+			showAlert("Error", "Draft ID is missing. Cannot submit job.");
+			return;
+		}
+		try {
+			setSubmitting(true);
+			const token = await getItemAsync("authToken");
+			const response = await fetch(`${API_BASE_URL}/drafts/${targetDraftId}/submit`, {
+				method: "PATCH",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ paymentMethod: "cod" }),
+			});
+			const data = await response.json();
+			if (response.ok && data.success) {
+				showAlert("Success", "Your print job has been submitted! Pay the shop on collection.", [
+					{
+						text: "OK",
+						onPress: () => router.replace("/(tabs)/home"),
+					},
+				]);
+			} else {
+				console.log("Failed to submit draft response:", data);
+				throw new Error(data.message || "Failed to submit job.");
+			}
+		} catch (err) {
+			console.error("Error submitting job:", err);
+			showAlert("Error", err.message || "Failed to submit draft. Please try again.");
+		} finally {
+			setSubmitting(false);
+		}
+	};
+
+	const handleContinue = () => {
+		if (selectedMethod === "cod") {
+			handleCashOnDelivery();
+		} else {
+			handlePayUpfront();
+		}
 	};
 
 	//----------------------------------- RENDER -----------------------------------//
@@ -235,16 +318,97 @@ const DraftDetails = () => {
 						</View>
 					))}
 				</View>
+
+				{/* Payment Method */}
+				<View style={styles.section}>
+					<View style={styles.sectionHeader}>
+						<Feather name="credit-card" size={18} color={colors.printRequest} />
+						<Text style={styles.sectionTitle}>Payment Method</Text>
+					</View>
+
+					<TouchableOpacity
+						style={[
+							styles.paymentOption,
+							styles.paymentOptionSpacing,
+							selectedMethod === "cod" && styles.paymentOptionSelected,
+							!codAllowed && styles.paymentOptionDisabled,
+						]}
+						onPress={() => setPaymentMethod("cod")}
+						disabled={!codAllowed || submitting}
+						activeOpacity={0.8}
+					>
+						<View style={[styles.paymentIcon, !codAllowed && styles.paymentIconDisabled]}>
+							<Feather
+								name="truck"
+								size={18}
+								color={codAllowed ? colors.printRequest : colors.textSecondary}
+							/>
+						</View>
+						<View style={styles.paymentTexts}>
+							<Text style={[styles.paymentLabel, !codAllowed && styles.paymentLabelDisabled]}>
+								Cash on Delivery
+							</Text>
+							<Text style={styles.paymentSubLabel}>{codSubLabel}</Text>
+						</View>
+						{loadingShop ? (
+							<ActivityIndicator size="small" color={colors.textSecondary} />
+						) : (
+							<Feather
+								name={selectedMethod === "cod" ? "check-circle" : "circle"}
+								size={20}
+								color={selectedMethod === "cod" ? colors.printRequest : colors.textSecondary}
+							/>
+						)}
+					</TouchableOpacity>
+
+					<TouchableOpacity
+						style={[
+							styles.paymentOption,
+							selectedMethod === "upfront" && styles.paymentOptionSelected,
+						]}
+						onPress={() => setPaymentMethod("upfront")}
+						disabled={submitting}
+						activeOpacity={0.8}
+					>
+						<View style={styles.paymentIcon}>
+							<Feather name="credit-card" size={18} color={colors.printRequest} />
+						</View>
+						<View style={styles.paymentTexts}>
+							<Text style={styles.paymentLabel}>Pay Upfront</Text>
+							<Text style={styles.paymentSubLabel}>
+								Transfer to the shop and upload your payment proof
+							</Text>
+						</View>
+						<Feather
+							name={selectedMethod === "upfront" ? "check-circle" : "circle"}
+							size={20}
+							color={selectedMethod === "upfront" ? colors.printRequest : colors.textSecondary}
+						/>
+					</TouchableOpacity>
+				</View>
 			</ScrollView>
 
-			{/* Footer Pay Upfront Button */}
+			{/* Footer Continue Button */}
 			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
 				<TouchableOpacity
-					style={styles.submitButton}
-					onPress={handlePayUpfront}
+					style={[styles.submitButton, (!selectedMethod || submitting) && styles.submitButtonDisabled]}
+					onPress={handleContinue}
+					disabled={!selectedMethod || submitting}
 				>
-					<Text style={styles.submitButtonText}>Pay Upfront</Text>
-					<Feather name="arrow-right" size={20} color={colors.cardBackground} />
+					{submitting ? (
+						<ActivityIndicator size="small" color={colors.cardBackground} />
+					) : (
+						<>
+							<Text style={styles.submitButtonText}>
+								{!selectedMethod
+									? "Select a Payment Method"
+									: selectedMethod === "cod"
+										? "Submit Job"
+										: "Pay Upfront"}
+							</Text>
+							<Feather name="arrow-right" size={20} color={colors.cardBackground} />
+						</>
+					)}
 				</TouchableOpacity>
 			</View>
 		</SafeAreaView>
@@ -541,10 +705,65 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.navInactive,
 		opacity: 0.6,
 	},
+	submitButtonDisabled: {
+		opacity: 0.6,
+	},
 	submitButtonText: {
 		fontSize: 16,
 		fontWeight: "700",
 		color: colors.cardBackground,
+	},
+	paymentOption: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 12,
+		backgroundColor: colors.cardBackground,
+		borderRadius: 16,
+		padding: 16,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+		shadowColor: colors.shadowLight,
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 1,
+		shadowRadius: 8,
+		elevation: 2,
+	},
+	paymentOptionSpacing: {
+		marginBottom: 12,
+	},
+	paymentOptionSelected: {
+		borderColor: colors.printRequest,
+		borderWidth: 2,
+	},
+	paymentOptionDisabled: {
+		opacity: 0.6,
+	},
+	paymentIcon: {
+		width: 36,
+		height: 36,
+		borderRadius: 10,
+		backgroundColor: "#FFE8E5",
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	paymentIconDisabled: {
+		backgroundColor: colors.background,
+	},
+	paymentTexts: {
+		flex: 1,
+	},
+	paymentLabel: {
+		fontSize: 15,
+		fontWeight: "600",
+		color: colors.textPrimary,
+	},
+	paymentLabelDisabled: {
+		color: colors.textSecondary,
+	},
+	paymentSubLabel: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		marginTop: 2,
 	},
 });
 

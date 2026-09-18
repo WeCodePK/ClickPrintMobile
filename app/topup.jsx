@@ -200,6 +200,7 @@ const TopUpPage = () => {
 					Authorization: `Bearer ${token}`,
 					"Content-Type": "application/json",
 				},
+				body: JSON.stringify({ paymentMethod: "upfront", paymentProofFile: uploadedFile._id }),
 			});
 			const data = await response.json();
 			if (response.ok && data.success) {
