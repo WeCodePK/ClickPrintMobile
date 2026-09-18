@@ -9,6 +9,7 @@ import {
 	StatusBar,
 	StyleSheet,
 	Text,
+	TextInput,
 	TouchableOpacity,
 	View,
 } from "react-native";
@@ -82,6 +83,7 @@ const DraftDetails = () => {
 	);
 	const [loadingShop, setLoadingShop] = useState(needsShopFetch);
 	const [paymentMethod, setPaymentMethod] = useState(null);
+	const [additionalComments, setAdditionalComments] = useState(draft?.additionalComments || "");
 	const [submitting, setSubmitting] = useState(false);
 
 	useEffect(() => {
@@ -164,16 +166,53 @@ const DraftDetails = () => {
 		}
 	};
 
-	const handlePayUpfront = () => {
-		router.push({
-			pathname: "/topup",
-			params: {
-				shopId: shopId || "",
-				draftId: draft?._id || params.draftId || "",
-				amount: String(cost.total ?? 0),
-				draft: JSON.stringify(draft),
+	// Comments belong to the draft, so they are saved with a PUT before the job
+	// leaves this screen; /submit only carries the payment method.
+	const saveAdditionalComments = async (token) => {
+		const trimmed = additionalComments.trim();
+		if (trimmed === (draft?.additionalComments || "").trim()) return;
+
+		const targetDraftId = draft?._id || params.draftId || "";
+		if (!targetDraftId) {
+			throw new Error("Draft ID is missing. Cannot save your comments.");
+		}
+
+		const response = await fetch(`${API_BASE_URL}/drafts/${targetDraftId}`, {
+			method: "PUT",
+			headers: {
+				Authorization: `Bearer ${token}`,
+				"Content-Type": "application/json",
 			},
+			body: JSON.stringify({ additionalComments: trimmed }),
 		});
+		const data = await response.json();
+		if (!response.ok) {
+			throw new Error(data.message || "Failed to save your comments.");
+		}
+	};
+
+	// Upfront payment continues on the top-up screen, so the comments are saved
+	// here before navigating away.
+	const handlePayUpfront = async () => {
+		try {
+			setSubmitting(true);
+			const token = await getItemAsync("authToken");
+			await saveAdditionalComments(token);
+			router.push({
+				pathname: "/topup",
+				params: {
+					shopId: shopId || "",
+					draftId: draft?._id || params.draftId || "",
+					amount: String(cost.total ?? 0),
+					draft: JSON.stringify({ ...draft, additionalComments: additionalComments.trim() }),
+				},
+			});
+		} catch (err) {
+			console.error("Error saving comments:", err);
+			showAlert("Error", err.message || "Failed to save your comments. Please try again.");
+		} finally {
+			setSubmitting(false);
+		}
 	};
 
 	// COD needs no payment proof, so the draft is submitted straight from here.
@@ -186,6 +225,7 @@ const DraftDetails = () => {
 		try {
 			setSubmitting(true);
 			const token = await getItemAsync("authToken");
+			await saveAdditionalComments(token);
 			const response = await fetch(`${API_BASE_URL}/drafts/${targetDraftId}/submit`, {
 				method: "PATCH",
 				headers: {
@@ -235,7 +275,11 @@ const DraftDetails = () => {
 				<View style={styles.placeholder} />
 			</View>
 
-			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+			<ScrollView
+				style={styles.scrollView}
+				contentContainerStyle={styles.scrollContent}
+				keyboardShouldPersistTaps="handled"
+			>
 				{/* Summary Card */}
 				<View style={styles.summaryCard}>
 					<View style={styles.summaryIconContainer}>
@@ -317,6 +361,25 @@ const DraftDetails = () => {
 							))}
 						</View>
 					))}
+				</View>
+
+				{/* Additional Comments */}
+				<View style={styles.section}>
+					<View style={styles.sectionHeader}>
+						<Feather name="message-square" size={18} color={colors.printRequest} />
+						<Text style={styles.sectionTitle}>Additional Comments</Text>
+					</View>
+					<TextInput
+						style={styles.commentsInput}
+						placeholder="Anything the shop should know about this job? (optional)"
+						placeholderTextColor={colors.textSecondary}
+						value={additionalComments}
+						onChangeText={setAdditionalComments}
+						editable={!submitting}
+						multiline
+						textAlignVertical="top"
+						maxLength={500}
+					/>
 				</View>
 
 				{/* Payment Method */}
@@ -525,6 +588,17 @@ const styles = StyleSheet.create({
 	sectionTitle: {
 		fontSize: 15,
 		fontWeight: "700",
+		color: colors.textPrimary,
+	},
+	commentsInput: {
+		minHeight: 96,
+		backgroundColor: colors.cardBackground,
+		borderRadius: 16,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+		paddingHorizontal: 16,
+		paddingVertical: 14,
+		fontSize: 14,
 		color: colors.textPrimary,
 	},
 	card: {

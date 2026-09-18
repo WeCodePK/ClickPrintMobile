@@ -180,7 +180,7 @@ const TopUpPage = () => {
 				body: JSON.stringify({ paymentProofFile: fileRecord._id }),
 			});
 			const updateData = await updateResponse.json();
-			if (!updateResponse.ok || !updateData.success) {
+			if (!updateResponse.ok) {
 				throw new Error(updateData.message || "Failed to attach payment proof to your draft.");
 			}
 
