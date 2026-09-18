@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "../context/auth";
 import { colors } from "../constants/colors";
 import WebInstallGate from "../components/WebInstallGate";
 import AlertHost from "../components/CustomAlert";
+import ServiceWorkerUpdater from "../components/ServiceWorkerUpdater";
 
 SplashScreen.preventAutoHideAsync();
 SystemUI.setBackgroundColorAsync(colors.background);
@@ -58,11 +59,16 @@ function RootNavigation() {
 
 export default function RootLayout() {
   return (
-    <WebInstallGate>
-      <AuthProvider>
-        <RootNavigation />
-      </AuthProvider>
-      <AlertHost />
-    </WebInstallGate>
+    <>
+      <WebInstallGate>
+        <AuthProvider>
+          <RootNavigation />
+        </AuthProvider>
+        <AlertHost />
+      </WebInstallGate>
+      {/* Outside the gate so updates also apply on the install page, and
+          mounted last so its updating screen sits above alerts. */}
+      <ServiceWorkerUpdater />
+    </>
   );
 }

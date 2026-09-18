@@ -23,6 +23,19 @@ self.addEventListener("activate", (event) => {
 	);
 });
 
+// Messages from the page (see components/ServiceWorkerUpdater.jsx):
+// - GET_VERSION: reply with this worker's build, so the page can tell whether
+//   it's running an older build.
+// - SKIP_WAITING: activate now. Chrome sometimes leaves this worker waiting
+//   despite the skipWaiting() in install, and calling it again unsticks it.
+self.addEventListener("message", (event) => {
+	if (event.data?.type === "GET_VERSION") {
+		event.ports[0]?.postMessage({ sha: BUILD_SHA });
+	} else if (event.data?.type === "SKIP_WAITING") {
+		self.skipWaiting();
+	}
+});
+
 self.addEventListener("fetch", (event) => {
 	const { request } = event;
 
