@@ -36,7 +36,7 @@ export default {
 			},
 		},
 		web: {
-			output: "static",
+			output: "single",
 			favicon: "./assets/icon.png",
 		},
 		plugins: [
