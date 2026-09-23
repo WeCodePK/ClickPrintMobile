@@ -124,10 +124,14 @@ const TopUpPage = () => {
 		}
 	};
 
-	// Upload payment proof via /api/files
+	// Upload payment proof via /api/files, then attach it to the draft
 	const handleUploadProof = async () => {
 		if (!pickedImage) {
 			showAlert("No image selected", "Please choose a payment screenshot to upload.");
+			return;
+		}
+		if (!draftId) {
+			showAlert("Error", "Draft ID is missing. Cannot upload payment proof.");
 			return;
 		}
 		try {
@@ -165,6 +169,21 @@ const TopUpPage = () => {
 			}
 
 			const fileRecord = body.data?.file || body.data;
+
+			// Attach the proof to the draft right away via /api/drafts/:draftId
+			const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
+				method: "PUT",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ paymentProofFile: fileRecord._id }),
+			});
+			const updateData = await updateResponse.json();
+			if (!updateResponse.ok) {
+				throw new Error(updateData.message || "Failed to attach payment proof to your draft.");
+			}
+
 			setUploadedFile(fileRecord);
 			showAlert("Proof Uploaded", "Payment proof uploaded successfully! You can now submit your job.");
 		} catch (err) {
@@ -200,7 +219,7 @@ const TopUpPage = () => {
 					Authorization: `Bearer ${token}`,
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ paymentMethod: "upfront", paymentProofFile: uploadedFile._id }),
+				body: JSON.stringify({ paymentMethod: "upfront" }),
 			});
 			const data = await response.json();
 			if (response.ok && data.success) {
