@@ -1,6 +1,7 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
 import {
 	ActivityIndicator,
 	Modal,
@@ -13,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../../../config/config";
 import { colors } from "../../../constants/colors";
+import SecureStore from "../../../utils/storage";
 
 let WebView = null;
 if (Platform.OS !== "web") {
@@ -28,6 +30,70 @@ if (Platform.OS !== "web") {
 const API_BASE_URL = config.apiBaseUrl;
 
 //----------------------------------- COMPONENTS -----------------------------------//
+
+// Web: file downloads need the auth header, so an iframe can't point at the
+// API directly. Fetch the PDF version with the token and show it through an
+// object URL, which the browser's built-in PDF viewer renders.
+const WebPdfViewer = ({ fileId, fileName }) => {
+	const [objectUrl, setObjectUrl] = useState(null);
+	const [error, setError] = useState(null);
+
+	useEffect(() => {
+		let active = true;
+		let url = null;
+		setObjectUrl(null);
+		setError(null);
+		(async () => {
+			try {
+				const token = await SecureStore.getItemAsync("authToken");
+				const response = await fetch(`${API_BASE_URL}/files/${fileId}`, {
+					headers: {
+						Authorization: `Bearer ${token}`,
+						Accept: "application/pdf",
+					},
+				});
+				if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+				const blob = await response.blob();
+				if (!active) return;
+				url = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
+				setObjectUrl(url);
+			} catch (err) {
+				console.error("Error loading preview:", err);
+				if (active) setError("Couldn't load the preview. Please try again.");
+			}
+		})();
+		return () => {
+			active = false;
+			if (url) URL.revokeObjectURL(url);
+		};
+	}, [fileId]);
+
+	if (error) {
+		return (
+			<View style={styles.spinnerOverlay}>
+				<Feather name="alert-circle" size={32} color={colors.printRequest} />
+				<Text style={[styles.spinnerText, { color: colors.printRequest }]}>{error}</Text>
+			</View>
+		);
+	}
+
+	if (!objectUrl) {
+		return (
+			<View style={styles.spinnerOverlay}>
+				<ActivityIndicator size="large" color={colors.primary} />
+				<Text style={styles.spinnerText}>Loading document...</Text>
+			</View>
+		);
+	}
+
+	return (
+		<iframe
+			src={objectUrl}
+			style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#121212" }}
+			title={fileName || "Document Preview"}
+		/>
+	);
+};
 
 const DocumentPreviewModal = ({ visible, fileId, fileName, numberOfPages, onClose }) => {
 	if (!visible || !fileId) return null;
@@ -73,11 +139,7 @@ const DocumentPreviewModal = ({ visible, fileId, fileName, numberOfPages, onClos
 					{/* Viewer Body */}
 					<View style={styles.viewerContainer}>
 						{Platform.OS === "web" ? (
-							<iframe
-								src={googleDocsUrl}
-								style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#121212" }}
-								title={fileName || "Document Preview"}
-							/>
+							<WebPdfViewer fileId={fileId} fileName={fileName} />
 						) : WebView ? (
 							<WebView
 								source={{ uri: googleDocsUrl }}

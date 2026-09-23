@@ -3,9 +3,23 @@ import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from "rea
 import { colors } from "../../../constants/colors";
 import { useState } from "react";
 
-const DocumentCard = ({ doc, index, onRemove, onPreview }) => {
+const DocumentCard = ({ doc, onRemove, onRetry, onPreview }) => {
 	const extension = doc.file.name ? doc.file.name.split(".").pop().toUpperCase() : "FILE";
 	const [expanded, setExpanded] = useState(false);
+	// Once every byte is sent the server still converts the file to PDF
+	// before responding, which can take a few seconds.
+	const processing = doc.status === "uploading" && (doc.progress ?? 0) >= 1;
+
+	const removeButton = (
+		<TouchableOpacity
+			style={styles.removeCardButton}
+			onPress={() => onRemove(doc.id)}
+			activeOpacity={0.7}
+			hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+		>
+			<Feather name="x" size={18} color={colors.printRequest} />
+		</TouchableOpacity>
+	);
 
 	return (
 		<View style={styles.documentCard}>
@@ -29,23 +43,32 @@ const DocumentCard = ({ doc, index, onRemove, onPreview }) => {
 						{doc.file.numberOfPages != null && (
 							<Text style={styles.documentFileSize}>{doc.file.numberOfPages === 1 ? 'Number of Pages' : 'Number of Pages'} : {doc.file.numberOfPages} </Text>
 						)}
+						{doc.status === "uploading" && (
+							<Text style={styles.statusText}>
+								{processing ? "Processing..." : `Uploading ${Math.round((doc.progress ?? 0) * 100)}%`}
+							</Text>
+						)}
+						{doc.status === "failed" && (
+							<Text style={styles.failedText}>{doc.errorMessage || "Upload failed"}</Text>
+						)}
 					</View>
 				</View>
 				{doc.status === "uploading" ? (
-					<View style={styles.statusContainer}>
+					<View style={styles.actionsContainer}>
 						<ActivityIndicator size="small" color={colors.primary} />
+						{removeButton}
 					</View>
 				) : doc.status === "failed" ? (
 					<View style={styles.actionsContainer}>
-						<Text style={styles.failedText}>Failed</Text>
 						<TouchableOpacity
-							style={styles.removeCardButton}
-							onPress={() => onRemove(index)}
+							style={styles.previewCardButton}
+							onPress={() => onRetry?.(doc.id)}
 							activeOpacity={0.7}
 							hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 						>
-							<Feather name="x" size={18} color={colors.printRequest} />
+							<Feather name="refresh-cw" size={18} color={colors.primary} />
 						</TouchableOpacity>
+						{removeButton}
 					</View>
 				) : doc.fileId ? (
 					<View style={styles.actionsContainer}>
@@ -57,24 +80,10 @@ const DocumentCard = ({ doc, index, onRemove, onPreview }) => {
 						>
 							<Feather name="eye" size={18} color={colors.primary} />
 						</TouchableOpacity>
-						<TouchableOpacity
-							style={styles.removeCardButton}
-							onPress={() => onRemove(index)}
-							activeOpacity={0.7}
-							hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-						>
-							<Feather name="x" size={18} color={colors.printRequest} />
-						</TouchableOpacity>
+						{removeButton}
 					</View>
 				) : (
-					<TouchableOpacity
-						style={styles.removeCardButton}
-						onPress={() => onRemove(index)}
-						activeOpacity={0.7}
-						hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-					>
-						<Feather name="x" size={18} color={colors.printRequest} />
-					</TouchableOpacity>
+					removeButton
 				)}
 			</View>
 		</View >
@@ -148,10 +157,11 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		alignItems: "center",
 	},
-	statusContainer: {
-		paddingHorizontal: 8,
-		justifyContent: "center",
-		alignItems: "center",
+	statusText: {
+		fontSize: 12,
+		fontWeight: "600",
+		color: colors.primary,
+		marginTop: 2,
 	},
 	failedText: {
 		color: colors.printRequest,

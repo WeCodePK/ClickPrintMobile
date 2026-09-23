@@ -3,11 +3,12 @@
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { uploadFile } from "../utils/fileUpload";
 import SecureStore from "../utils/storage";
 import DocumentCard from "./components/uploadDocument/DocumentCard";
 import DocumentPreviewModal from "./components/uploadDocument/DocumentPreviewModal";
@@ -28,6 +29,14 @@ const UploadDocument = () => {
 	const [hydrating, setHydrating] = useState(!!draftId);
 	const [error, setError] = useState(null);
 	const [previewDoc, setPreviewDoc] = useState(null);
+	// Abort handles for in-flight uploads, keyed by document id.
+	const abortersRef = useRef({});
+
+	// Stop in-flight uploads when leaving the screen.
+	useEffect(() => {
+		const aborters = abortersRef.current;
+		return () => Object.values(aborters).forEach((abort) => abort());
+	}, []);
 
 	// Resuming an existing draft: pull the already-uploaded files from the
 	// backend so they show up here. We only have their names/ids (not the
@@ -50,11 +59,13 @@ const UploadDocument = () => {
 				if (!active || !draft) return;
 				const existingDocs = (draft.files || []).map((f) => {
 					const originalName = f.file?.name || "Document";
+					const fileId = f.file?._id || f.file;
 					return {
+						id: fileId,
 						// Synthetic file object so DocumentCard can show the name/extension/pages.
 						file: { name: originalName, numberOfPages: f.file?.numberOfPages },
 						name: originalName.replace(/\.[^/.]+$/, "") || "Document",
-						fileId: f.file?._id || f.file,
+						fileId,
 						settings: f.settings || {},
 						existing: true,
 						status: "idle",
@@ -74,90 +85,67 @@ const UploadDocument = () => {
 	}, [draftId]);
 
 
+	const updateDocument = (id, changes) => {
+		setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...changes } : d)));
+	};
+
+	// Uploads one picked document over tus, tracking progress on its card.
+	// Failures stay on the card with the reason so the user can retry or remove.
+	const startUpload = async (doc) => {
+		updateDocument(doc.id, { status: "uploading", progress: 0, errorMessage: null });
+		try {
+			const token = await SecureStore.getItemAsync("authToken");
+			let source;
+			if (Platform.OS === "web") {
+				source = doc.file.file || (await (await fetch(doc.file.uri)).blob());
+			} else {
+				source = { uri: doc.file.uri, name: doc.file.name, type: doc.file.mimeType };
+			}
+
+			const { promise, abort } = uploadFile(source, {
+				name: doc.file.name,
+				mimeType: doc.file.mimeType,
+				token,
+				onProgress: (progress) => updateDocument(doc.id, { progress }),
+			});
+			abortersRef.current[doc.id] = abort;
+
+			const uploaded = await promise;
+			console.log("Document uploaded successfully named ", doc.file.name, " with id ", uploaded._id);
+			updateDocument(doc.id, {
+				status: "success",
+				fileId: uploaded._id,
+				file: { ...doc.file, numberOfPages: uploaded.numberOfPages },
+			});
+		} catch (err) {
+			console.log("error in uploading document named ", doc.file.name, ":", err.message);
+			updateDocument(doc.id, { status: "failed", errorMessage: err.message || "Upload failed" });
+		} finally {
+			delete abortersRef.current[doc.id];
+		}
+	};
+
 	const handleDocumentPick = async () => {
 		try {
 			setError(null);
 			setPicking(true);
 
+			// No type filter: the backend decides which formats it accepts.
 			const result = await DocumentPicker.getDocumentAsync({
-				type: [
-					"application/pdf",
-					"application/msword",
-					"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-					"application/vnd.ms-excel",
-					"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-					"text/plain",
-					"image/jpeg",
-					"image/png",
-					"image/jpg",
-				],
 				copyToCacheDirectory: true,
 				multiple: true,
 			});
 
 			if (!result.canceled) {
-				const token = await SecureStore.getItemAsync("authToken");
 				const newDocs = result.assets.map((file) => ({
 					id: Math.random().toString(),
 					file,
 					name: file.name ? file.name.replace(/\.[^/.]+$/, "") || "Document" : "Document",
 					status: "uploading",
+					progress: 0,
 				}));
-				
 				setDocuments((prev) => [...prev, ...newDocs]);
-				setError(null);
-				setPicking(false);
-
-				const failedDocs = [];
-
-				await Promise.all(
-					newDocs.map(async (doc) => {
-						const formData = new FormData();
-						if (Platform.OS === "web") {
-							let filePart = doc.file.file;
-							if (!filePart) {
-								const res = await fetch(doc.file.uri);
-								filePart = await res.blob();
-							}
-							formData.append("file", filePart, doc.file.name);
-						} else {
-							formData.append("file", {
-								uri: doc.file.uri,
-								name: doc.file.name,
-								type: doc.file.mimeType,
-							});
-						}
-						formData.append("convert", "true");
-						
-						const uploadData = await uploadDocument(formData, doc.file.name, token);
-
-						if (uploadData) {
-							setDocuments((prev) => prev.map((d) => {
-								if (d.id === doc.id) {
-									return {
-										...d,
-										status: "success",
-										fileId: uploadData._id,
-										file: { ...d.file, numberOfPages: uploadData.numberOfPages }
-									};
-								}
-								return d;
-							}));
-						} else {
-							failedDocs.push(doc.file.name);
-							setDocuments((prev) => prev.map((d) => {
-								if (d.id === doc.id) {
-									return { ...d, status: "failed" };
-								}
-								return d;
-							}));
-						}
-					})
-				);
-
-				if (failedDocs.length > 0) {
-					setError(`${failedDocs.length} document(s) failed to upload: ${failedDocs.join(", ")}. Please try again.`);
-				}
+				newDocs.forEach(startUpload);
 			}
 		} catch (err) {
 			console.error("Error picking document:", err);
@@ -167,41 +155,23 @@ const UploadDocument = () => {
 		}
 	};
 
-	const handleRemoveDocument = (index) => {
-		const removedDoc = documents[index];
-		const newDocs = documents.filter((_, i) => i !== index);
-		setDocuments(newDocs);
+	const handleRetryDocument = (id) => {
+		const doc = documents.find((d) => d.id === id);
+		if (doc) startUpload(doc);
+	};
 
-		if (removedDoc?.status === "failed") {
-			const remainingFailed = newDocs.filter(d => d.status === "failed");
-			if (remainingFailed.length === 0) {
-				setError(null);
-			} else {
-				const failedNames = remainingFailed.map(d => d.file?.name || d.name || "Document");
-				setError(`${remainingFailed.length} document(s) failed to upload: ${failedNames.join(", ")}. Please try again.`);
-			}
-		}
+	const handleRemoveDocument = (id) => {
+		abortersRef.current[id]?.();
+		delete abortersRef.current[id];
+		setDocuments((prev) => prev.filter((d) => d.id !== id));
 	};
 
 	const handleContinue = async () => {
 		setUploading(true);
 		setError(null);
-		const token = await SecureStore.getItemAsync("authToken");
 		try {
-			if (documents.some(d => d.status === "uploading")) {
-				setError("Please wait for all documents to finish uploading.");
-				setUploading(false);
-				return;
-			}
-			
-			const successfulDocs = documents.filter(d => d.status === "success" || d.existing);
-			
-			if (successfulDocs.length === 0) {
-				setError("No documents to upload.");
-				setUploading(false);
-				return;
-			}
-
+			const token = await SecureStore.getItemAsync("authToken");
+			const successfulDocs = documents.filter((d) => d.status === "success" || d.existing);
 			const documentArray = successfulDocs.map((doc) => ({ fileId: doc.fileId, name: doc.name || doc.file.name }));
 
 			let targetDraftId = draftId;
@@ -235,8 +205,7 @@ const UploadDocument = () => {
 					body: JSON.stringify({ files: draftFiles }),
 				});
 				const draftData = await draftResponse.json();
-
-				if (draftResponse.status !== 201) {
+				if (!draftResponse.ok) {
 					throw new Error(draftData.message || "Failed to create draft.");
 				}
 
@@ -259,32 +228,12 @@ const UploadDocument = () => {
 		}
 	};
 
-	const uploadDocument = async (formData, fileName, token) => {
-		try {
-			const response = await fetch(`${API_BASE_URL}/files`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${token}`,
-				},
-				body: formData,
-			});
-			const body = await response.json();
-			
-			if (response.status === 201) {
-				console.log("Document uploaded successfully named ", fileName, " with id ", body.data.file._id);
-				return body.data.file;
-			} else {
-				console.log("error in uploading document named ", fileName, ":", body.message);
-				return null;
-			}
-		} catch (err) {
-			console.error("Network error uploading ", fileName, ":", err);
-			return null;
-		}
-	};
-
 	const hasDocuments = documents.length > 0;
-	const allNamesValid = documents.every((d) => d.name.trim());
+	const anyUploading = documents.some((d) => d.status === "uploading");
+	const failedDocs = documents.filter((d) => d.status === "failed");
+	// Continue waits for every upload to finish and for failed ones to be
+	// retried or removed, so nothing is dropped from the draft silently.
+	const canContinue = hasDocuments && !anyUploading && failedDocs.length === 0 && !uploading;
 
 	//----------------------------------- RENDER -----------------------------------//
 
@@ -337,17 +286,27 @@ const UploadDocument = () => {
 					{/* Document cards list */}
 					{hasDocuments && (
 						<View style={styles.documentsList}>
-							{documents.map((doc, index) => (
+							{documents.map((doc) => (
 								<DocumentCard
-									key={`${doc.fileId || doc.file?.uri || "doc"}-${index}`}
+									key={doc.id}
 									doc={doc}
-									index={index}
 									onRemove={handleRemoveDocument}
+									onRetry={handleRetryDocument}
 									onPreview={(fileId, name, numberOfPages) =>
 										setPreviewDoc({ fileId, name, numberOfPages })
 									}
 								/>
 							))}
+						</View>
+					)}
+
+					{/* Derived from the list, so it stays accurate as files are retried, removed or added */}
+					{failedDocs.length > 0 && (
+						<View style={styles.errorBox}>
+							<Feather name="alert-circle" size={18} color={colors.printRequest} />
+							<Text style={styles.errorText}>
+								{failedDocs.length} document(s) failed to upload. Retry or remove them to continue.
+							</Text>
 						</View>
 					)}
 
@@ -362,21 +321,15 @@ const UploadDocument = () => {
 			</ScrollView>
 			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
 				<TouchableOpacity
-					style={[styles.continueButton, (!hasDocuments || !allNamesValid || uploading) && styles.continueButtonDisabled]}
+					style={[styles.continueButton, !canContinue && styles.continueButtonDisabled]}
 					onPress={handleContinue}
-					disabled={!hasDocuments || !allNamesValid || uploading}
+					disabled={!canContinue}
 				>
 					{uploading ? (
 						<ActivityIndicator color={colors.activityIndicator} />
 					) : (
-						<Text
-							style={
-								!hasDocuments || !allNamesValid || uploading
-									? { color: "darkgrey" }
-									: styles.continueButtonText
-							}
-						>
-							Continue
+						<Text style={canContinue ? styles.continueButtonText : { color: "darkgrey" }}>
+							{anyUploading ? "Uploading..." : "Continue"}
 						</Text>
 					)}
 				</TouchableOpacity>
