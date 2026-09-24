@@ -25,7 +25,7 @@ const UploadDocument = () => {
 	const insets = useSafeAreaInsets();
 	// `share` is set by the service worker when a share brought no files
 	// (see public/share-target.js).
-	const { draftId, share } = useLocalSearchParams();
+	const { draftId, share, received } = useLocalSearchParams();
 	const [documents, setDocuments] = useState([]);
 	const [picking, setPicking] = useState(false);
 	const [uploading, setUploading] = useState(false);
@@ -95,7 +95,10 @@ const UploadDocument = () => {
 		if (share === "failed") {
 			setError("Couldn't receive the shared files. Try sharing them again, or pick them here instead.");
 		} else if (share === "empty") {
-			setError("No files came through with that share. Try sharing them again, or pick them here instead.");
+			// TEMP: `received` shows what the share did contain, to debug on-device.
+			setError(
+				`No files came through with that share. Try sharing them again, or pick them here instead. (Received: ${received || "?"})`
+			);
 		}
 		let active = true;
 		takeSharedFiles()
@@ -112,7 +115,7 @@ const UploadDocument = () => {
 		return () => {
 			active = false;
 		};
-	}, [draftId, share]);
+	}, [draftId, share, received]);
 
 	const updateDocument = (id, changes) => {
 		setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...changes } : d)));

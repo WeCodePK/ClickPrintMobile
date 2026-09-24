@@ -57,7 +57,11 @@ self.addEventListener("fetch", (event) => {
 		event.respondWith(
 			(async () => {
 				try {
-					const response = await fetch(request);
+					let response = await fetch(request);
+					// Single-page build: servers without an SPA fallback 404 every
+					// route but "/" when it's loaded directly (e.g. the share
+					// redirect to /upload-document), so serve the app shell instead.
+					if (response.status === 404) response = await fetch("/");
 					const cache = await caches.open(CACHE_NAME);
 					cache.put(request, response.clone());
 					return response;

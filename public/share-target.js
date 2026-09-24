@@ -33,6 +33,9 @@ self.addEventListener("fetch", (event) => {
 			// so instead of opening empty: "failed" if the body couldn't be read,
 			// "empty" if it had no files.
 			let shareStatus = null;
+			// For an empty share, what did arrive: field names, kinds and sizes,
+			// never contents. Shown on the upload screen to debug on-device.
+			let received = null;
 			try {
 				const formData = await request.formData();
 				console.log(
@@ -42,7 +45,17 @@ self.addEventListener("fetch", (event) => {
 					)
 				);
 				const files = formData.getAll("files").filter((f) => f instanceof File);
-				if (files.length === 0) shareStatus = "empty";
+				if (files.length === 0) {
+					shareStatus = "empty";
+					received =
+						[...formData.entries()]
+							.map(([key, value]) =>
+								value instanceof File
+									? `${key}: file ${value.type || "?"} ${value.size}B`
+									: `${key}: text ${value.length} chars`
+							)
+							.join(", ") || "nothing";
+				}
 				const cache = await caches.open(SHARED_FILES_CACHE);
 				const batch = Date.now();
 				// Keys sort in share order; the name rides along in a header since
@@ -67,6 +80,7 @@ self.addEventListener("fetch", (event) => {
 			// 303 turns the POST into a GET of the upload screen.
 			const target = new URL("/upload-document", self.location.origin);
 			if (shareStatus) target.searchParams.set("share", shareStatus);
+			if (received) target.searchParams.set("received", received);
 			return Response.redirect(target.href, 303);
 		})()
 	);
