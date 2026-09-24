@@ -50,6 +50,8 @@
     "tus-js-client": "^4.3.1"
   },
   "devDependencies": {
+    "@emnapi/core": "^1.11.3",
+    "@emnapi/runtime": "^1.11.3",
     "@types/react": "~19.1.0",
     "cloudflared": "^0.7.1",
     "concurrently": "^10.0.3",
