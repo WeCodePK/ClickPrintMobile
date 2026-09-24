@@ -8,13 +8,14 @@ import config from "../config/config";
 const API_BASE_URL = config.apiBaseUrl;
 
 // Friendlier messages for the tus error statuses the backend documents.
+// Kept short: they're shown inline on the document card.
 const STATUS_MESSAGES = {
 	400: "Invalid file name",
-	401: "Session expired, please log in again",
-	404: "Upload expired, please try again",
-	410: "Upload expired, please try again",
-	413: "File is too large (max 100 MB)",
-	422: "Couldn't convert this file",
+	401: "Session expired",
+	404: "Upload expired",
+	410: "Upload expired",
+	413: "Too large (max 100 MB)",
+	422: "Can't convert this file",
 };
 
 //----------------------------------- UPLOAD -----------------------------------//
@@ -59,7 +60,7 @@ export const uploadFile = (file, { name, mimeType, token, onProgress }) => {
 					try {
 						message = JSON.parse(res.getBody()).message;
 					} catch {
-						message = res ? "Upload failed" : "Network error, check your connection";
+						message = res ? "Upload failed" : "No connection";
 					}
 				}
 				reject(Object.assign(new Error(message), { status }));

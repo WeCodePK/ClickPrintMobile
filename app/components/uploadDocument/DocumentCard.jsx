@@ -66,9 +66,6 @@ const DocumentCard = ({ doc, number, onRemove, onRetry, onPreview }) => {
 								<Text style={[styles.statusText, { marginTop: 0 }]}>Uploaded</Text>
 							</View>
 						)}
-						{doc.status === "failed" && (
-							<Text style={styles.failedText}>{doc.errorMessage || "Upload failed"}</Text>
-						)}
 					</View>
 				</View>
 				{doc.status === "uploading" ? (
@@ -76,23 +73,26 @@ const DocumentCard = ({ doc, number, onRemove, onRetry, onPreview }) => {
 						<ActivityIndicator size="small" color={colors.primary} />
 						{removeButton}
 					</View>
-				) : doc.status === "failed" ? (
-					<View style={styles.actionsContainer}>
-						<TouchableOpacity
-							style={styles.retryButton}
-							onPress={() => onRetry?.(doc.id)}
-							activeOpacity={0.7}
-							hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-						>
-							<Feather name="refresh-cw" size={14} color={colors.textPrimary} />
-							<Text style={styles.retryButtonText}>Retry</Text>
-						</TouchableOpacity>
-						{removeButton}
-					</View>
 				) : (
 					removeButton
 				)}
 			</View>
+			{/* Full-width row under the card so the reason and Retry don't squeeze the file name */}
+			{doc.status === "failed" && (
+				<View style={styles.failedRow}>
+					<Feather name="alert-circle" size={14} color={colors.dangerDark} />
+					<Text style={styles.failedText}>{doc.errorMessage || "Upload failed"}</Text>
+					<TouchableOpacity
+						style={styles.retryButton}
+						onPress={() => onRetry?.(doc.id)}
+						activeOpacity={0.7}
+						hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+					>
+						<Feather name="refresh-cw" size={14} color={colors.textPrimary} />
+						<Text style={styles.retryButtonText}>Retry</Text>
+					</TouchableOpacity>
+				</View>
+			)}
 		</TouchableOpacity>
 	);
 };
@@ -201,7 +201,17 @@ const styles = StyleSheet.create({
 		color: colors.primary,
 		marginTop: 2,
 	},
+	failedRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		marginTop: 12,
+		paddingTop: 12,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
+	},
 	failedText: {
+		flex: 1,
 		color: colors.dangerDark,
 		fontSize: 12,
 		fontWeight: "700",

@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
 		gap: 12,
 	},
 	continueButton: {
-		backgroundColor: colors.printRequest,
+		backgroundColor: colors.primary,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
