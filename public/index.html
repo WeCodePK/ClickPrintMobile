@@ -12,8 +12,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
     <title>ClickPrint</title>
 
-    <!-- PWA -->
-    <link rel="manifest" href="/manifest.json" />
+    <!-- PWA. This file is served as-is by the dev server, so it carries the
+         dev manifest/title ("ClickPrintDev"). `npm run build:web` rewrites
+         both to the production values in dist/index.html. -->
+    <link rel="manifest" href="/manifest-dev.json" />
     <!-- Status bar color on an installed PWA. Light -> dark status-bar text.
          Keep in sync with colors.background (constants/colors.js). -->
     <meta name="theme-color" content="#F7F8FA" />
@@ -25,7 +27,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Click Print" />
+    <meta name="apple-mobile-web-app-title" content="ClickPrintDev" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
     <!-- Icons -->

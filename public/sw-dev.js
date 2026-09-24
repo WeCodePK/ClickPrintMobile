@@ -8,6 +8,11 @@
 // and all other requests (JS bundles, HMR, WebSocket) are left untouched — so
 // it behaves exactly like having no service worker and never serves Metro a
 // stale bundle.
+//
+// It also receives files shared from other apps (share-target.js), so
+// "Share with ClickPrint" can be tested in development.
+
+importScripts("/share-target.js");
 
 self.addEventListener("install", () => {
 	self.skipWaiting();
@@ -17,9 +22,12 @@ self.addEventListener("activate", (event) => {
 	event.waitUntil(
 		(async () => {
 			// Drop any caches left behind by the production worker (sw.js) so a
-			// dev session on the same origin never serves stale content.
+			// dev session on the same origin never serves stale content. Shared
+			// files waiting for the upload screen are kept.
 			const keys = await caches.keys();
-			await Promise.all(keys.map((key) => caches.delete(key)));
+			await Promise.all(
+				keys.filter((key) => key !== SHARED_FILES_CACHE).map((key) => caches.delete(key))
+			);
 			await self.clients.claim();
 		})()
 	);
@@ -28,8 +36,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
 	// A real fetch handler is required for installability, but we only touch
 	// top-level navigations and just re-fetch them from the network (no cache).
-	// Everything else falls through to the browser untouched.
-	if (event.request.mode === "navigate") {
+	// Everything else falls through to the browser untouched. (Share POSTs are
+	// navigations too, but share-target.js answers those.)
+	if (event.request.mode === "navigate" && event.request.method === "GET") {
 		event.respondWith(fetch(event.request));
 	}
 });

@@ -5,18 +5,24 @@
 const BUILD_SHA = "__COMMIT_SHA__";
 const CACHE_NAME = `clickprint-${BUILD_SHA}`;
 
+// Receives files shared from other apps ("Share with ClickPrint").
+importScripts("/share-target.js");
+
 // Take control as soon as the new worker is installed.
 self.addEventListener("install", (event) => {
 	self.skipWaiting();
 });
 
-// Clean up caches from previous versions.
+// Clean up caches from previous versions. Shared files waiting for the upload
+// screen are kept.
 self.addEventListener("activate", (event) => {
 	event.waitUntil(
 		(async () => {
 			const keys = await caches.keys();
 			await Promise.all(
-				keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+				keys
+					.filter((key) => key !== CACHE_NAME && key !== SHARED_FILES_CACHE)
+					.map((key) => caches.delete(key))
 			);
 			await self.clients.claim();
 		})()

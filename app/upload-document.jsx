@@ -9,6 +9,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { uploadFile } from "../utils/fileUpload";
+import { takeSharedFiles } from "../utils/sharedFiles";
 import SecureStore from "../utils/storage";
 import DocumentCard from "./components/uploadDocument/DocumentCard";
 import DocumentPreviewModal from "./components/uploadDocument/DocumentPreviewModal";
@@ -84,6 +85,27 @@ const UploadDocument = () => {
 		};
 	}, [draftId]);
 
+	// Files shared from another app ("Share with ClickPrint") wait in the
+	// service worker's cache until this screen opens; add and upload them.
+	// Skipped when resuming a draft, whose hydration replaces the list.
+	useEffect(() => {
+		if (Platform.OS !== "web" || draftId) return;
+		let active = true;
+		takeSharedFiles()
+			.then((files) => {
+				if (!active || files.length === 0) return;
+				addDocuments(
+					files.map((file) => ({ name: file.name, mimeType: file.type, size: file.size, file }))
+				);
+			})
+			.catch((err) => {
+				console.error("Error loading shared files:", err);
+				setError("Failed to load the shared documents. Please try again.");
+			});
+		return () => {
+			active = false;
+		};
+	}, [draftId]);
 
 	const updateDocument = (id, changes) => {
 		setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...changes } : d)));
@@ -125,6 +147,20 @@ const UploadDocument = () => {
 		}
 	};
 
+	// Adds picked or shared files (DocumentPicker asset shape) and starts
+	// uploading each one.
+	const addDocuments = (files) => {
+		const newDocs = files.map((file) => ({
+			id: Math.random().toString(),
+			file,
+			name: file.name ? file.name.replace(/\.[^/.]+$/, "") || "Document" : "Document",
+			status: "uploading",
+			progress: 0,
+		}));
+		setDocuments((prev) => [...prev, ...newDocs]);
+		newDocs.forEach(startUpload);
+	};
+
 	const handleDocumentPick = async () => {
 		try {
 			setError(null);
@@ -136,17 +172,7 @@ const UploadDocument = () => {
 				multiple: true,
 			});
 
-			if (!result.canceled) {
-				const newDocs = result.assets.map((file) => ({
-					id: Math.random().toString(),
-					file,
-					name: file.name ? file.name.replace(/\.[^/.]+$/, "") || "Document" : "Document",
-					status: "uploading",
-					progress: 0,
-				}));
-				setDocuments((prev) => [...prev, ...newDocs]);
-				newDocs.forEach(startUpload);
-			}
+			if (!result.canceled) addDocuments(result.assets);
 		} catch (err) {
 			console.error("Error picking document:", err);
 			setError("Failed to pick document. Please try again.");
