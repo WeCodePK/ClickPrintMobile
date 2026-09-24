@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<!--
+  Root HTML template for the single-page web build (web.output: "single").
+  Expo injects the bundle script at the end of the body (so never write the
+  literal closing body/head tags in this comment). Service worker registration
+  lives in app/_layout.jsx because it depends on NODE_ENV.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    <title>Click Print</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <!-- Status bar color on an installed PWA. Light -> dark status-bar text.
+         Keep in sync with colors.background (constants/colors.js). -->
+    <meta name="theme-color" content="#F7F8FA" />
+    <!-- Force light rendering so a dark-mode device doesn't darken the
+         system nav bar or draw a dark seam under the status bar. -->
+    <meta name="color-scheme" content="light" />
+
+    <!-- iOS home-screen / standalone support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Click Print" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <!-- Icons -->
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+
+    <style id="expo-reset">
+      /* react-native-web reset: full-height root, no body scroll so
+         ScrollView components behave the same as on native. */
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+      /* Match the Android system nav bar on an installed PWA to the app. */
+      :root {
+        color-scheme: light;
+      }
+      html,
+      body {
+        margin: 0;
+        background-color: #F7F8FA;
+      }
+    </style>
+
+    <script>
+      // Capture the install prompt as early as possible. The
+      // `beforeinstallprompt` event can fire before React mounts, so we stash
+      // it on window and re-broadcast a custom event InstallScreen listens for.
+      window.__bipEvent = null;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__bipEvent = e;
+        window.dispatchEvent(new Event('bip-ready'));
+      });
+      window.addEventListener('appinstalled', function () {
+        window.__bipEvent = null;
+      });
+    </script>
+  </head>
+
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

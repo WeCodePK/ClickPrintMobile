@@ -2,6 +2,7 @@ import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { AuthProvider, useAuth } from "../context/auth";
 import { colors } from "../constants/colors";
 import WebInstallGate from "../components/WebInstallGate";
@@ -10,6 +11,17 @@ import ServiceWorkerUpdater from "../components/ServiceWorkerUpdater";
 
 SplashScreen.preventAutoHideAsync();
 SystemUI.setBackgroundColorAsync(colors.background);
+
+// Web: register the service worker. In production that's the caching worker
+// (sw.js). In development it's a no-op worker (sw-dev.js) that caches nothing —
+// it exists only to satisfy Android Chrome's installability check (a registered
+// SW with a fetch handler) without interfering with Metro's fast refresh.
+if (Platform.OS === "web" && typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  const swPath = process.env.NODE_ENV === "production" ? "/sw.js" : "/sw-dev.js";
+  navigator.serviceWorker.register(swPath).catch((err) => {
+    console.error("Service worker registration failed:", err);
+  });
+}
 
 // Routes reachable without a completed profile: "/" (login) and "/otp".
 function isGuestOnlyRoute(segment) {
