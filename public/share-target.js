@@ -7,6 +7,14 @@
 // the files in a cache and redirects to the upload screen, which takes them out
 // (utils/sharedFiles.js) and uploads them like picked files.
 //
+// The manifest also declares title/text/url so captions (e.g. a WhatsApp
+// image's) arrive as form fields, which are ignored here. Without them Chrome
+// turns the text into a "shared.txt" file and sends that instead.
+//
+// The manifest's files.accept list is deliberately broad; the backend decides
+// what's printable. It lists each MIME type AND extension instead of "*/*":
+// in testing, no shared file got through with "*/*" on Chrome for Android.
+//
 // SHARED_FILES_CACHE must match the name in utils/sharedFiles.js, and the
 // workers' activate handlers must not delete it.
 const SHARE_TARGET_PATH = "/share-target";
@@ -21,9 +29,20 @@ self.addEventListener("fetch", (event) => {
 
 	event.respondWith(
 		(async () => {
+			// Tells the upload screen when a share brought no files, so it can say
+			// so instead of opening empty: "failed" if the body couldn't be read,
+			// "empty" if it had no files.
+			let shareStatus = null;
 			try {
 				const formData = await request.formData();
+				console.log(
+					"Share received:",
+					[...formData.entries()].map(([key, value]) =>
+						value instanceof File ? `${key}: file "${value.name}" (${value.type}, ${value.size} B)` : `${key}: "${value}"`
+					)
+				);
 				const files = formData.getAll("files").filter((f) => f instanceof File);
+				if (files.length === 0) shareStatus = "empty";
 				const cache = await caches.open(SHARED_FILES_CACHE);
 				const batch = Date.now();
 				// Keys sort in share order; the name rides along in a header since
@@ -43,9 +62,12 @@ self.addEventListener("fetch", (event) => {
 				);
 			} catch (err) {
 				console.error("Failed to receive shared files:", err);
+				shareStatus = "failed";
 			}
 			// 303 turns the POST into a GET of the upload screen.
-			return Response.redirect(new URL("/upload-document", self.location.origin).href, 303);
+			const target = new URL("/upload-document", self.location.origin);
+			if (shareStatus) target.searchParams.set("share", shareStatus);
+			return Response.redirect(target.href, 303);
 		})()
 	);
 });

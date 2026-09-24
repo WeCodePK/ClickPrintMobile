@@ -23,7 +23,9 @@ const API_BASE_URL = config.apiBaseUrl;
 const UploadDocument = () => {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
-	const { draftId } = useLocalSearchParams();
+	// `share` is set by the service worker when a share brought no files
+	// (see public/share-target.js).
+	const { draftId, share } = useLocalSearchParams();
 	const [documents, setDocuments] = useState([]);
 	const [picking, setPicking] = useState(false);
 	const [uploading, setUploading] = useState(false);
@@ -90,6 +92,11 @@ const UploadDocument = () => {
 	// Skipped when resuming a draft, whose hydration replaces the list.
 	useEffect(() => {
 		if (Platform.OS !== "web" || draftId) return;
+		if (share === "failed") {
+			setError("Couldn't receive the shared files. Try sharing them again, or pick them here instead.");
+		} else if (share === "empty") {
+			setError("No files came through with that share. Try sharing them again, or pick them here instead.");
+		}
 		let active = true;
 		takeSharedFiles()
 			.then((files) => {
@@ -105,7 +112,7 @@ const UploadDocument = () => {
 		return () => {
 			active = false;
 		};
-	}, [draftId]);
+	}, [draftId, share]);
 
 	const updateDocument = (id, changes) => {
 		setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...changes } : d)));
