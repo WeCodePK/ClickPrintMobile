@@ -23,6 +23,13 @@ if (Platform.OS === "web" && typeof navigator !== "undefined" && "serviceWorker"
   });
 }
 
+// Web dev: point at manifest-dev.json and retitle the iOS home-screen name so
+// an installed dev PWA shows up as "ClickPrintDev", distinct from production.
+if (Platform.OS === "web" && process.env.NODE_ENV !== "production" && typeof document !== "undefined") {
+  document.querySelector('link[rel="manifest"]')?.setAttribute("href", "/manifest-dev.json");
+  document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute("content", "ClickPrintDev");
+}
+
 // Routes reachable without a completed profile: "/" (login) and "/otp".
 function isGuestOnlyRoute(segment) {
   return segment === undefined || segment === "otp";
