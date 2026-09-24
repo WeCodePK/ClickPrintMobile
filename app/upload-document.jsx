@@ -283,27 +283,10 @@ const UploadDocument = () => {
 						</TouchableOpacity>
 					)}
 
-					{/* Document cards list */}
-					{hasDocuments && (
-						<View style={styles.documentsList}>
-							{documents.map((doc) => (
-								<DocumentCard
-									key={doc.id}
-									doc={doc}
-									onRemove={handleRemoveDocument}
-									onRetry={handleRetryDocument}
-									onPreview={(fileId, name, numberOfPages) =>
-										setPreviewDoc({ fileId, name, numberOfPages })
-									}
-								/>
-							))}
-						</View>
-					)}
-
 					{/* Derived from the list, so it stays accurate as files are retried, removed or added */}
 					{failedDocs.length > 0 && (
 						<View style={styles.errorBox}>
-							<Feather name="alert-circle" size={18} color={colors.printRequest} />
+							<Feather name="alert-circle" size={18} color={colors.dangerDark} />
 							<Text style={styles.errorText}>
 								{failedDocs.length} document(s) failed to upload. Retry or remove them to continue.
 							</Text>
@@ -312,8 +295,26 @@ const UploadDocument = () => {
 
 					{error && (
 						<View style={styles.errorBox}>
-							<Feather name="alert-circle" size={18} color={colors.printRequest} />
+							<Feather name="alert-circle" size={18} color={colors.dangerDark} />
 							<Text style={styles.errorText}>{error}</Text>
+						</View>
+					)}
+
+					{/* Document cards list */}
+					{hasDocuments && (
+						<View style={styles.documentsList}>
+							{documents.map((doc, index) => (
+								<DocumentCard
+									key={doc.id}
+									doc={doc}
+									number={index + 1}
+									onRemove={handleRemoveDocument}
+									onRetry={handleRetryDocument}
+									onPreview={(fileId, name, numberOfPages) =>
+										setPreviewDoc({ fileId, name, numberOfPages })
+									}
+								/>
+							))}
 						</View>
 					)}
 				</View>
@@ -359,7 +360,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 20,
-		paddingVertical: 16,
+		paddingVertical: 10,
 		backgroundColor: colors.cardBackground,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
@@ -405,6 +406,7 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		backgroundColor: colors.background,
 		minHeight: 200,
+		marginBottom: 14,
 	},
 	uploadAreaFilled: {
 		borderColor: colors.primary,
@@ -453,15 +455,15 @@ const styles = StyleSheet.create({
 	errorBox: {
 		flexDirection: "row",
 		alignItems: "flex-start",
-		backgroundColor: "rgba(255, 139, 123, 0.1)",
+		backgroundColor: "rgba(211, 47, 47, 0.1)",
 		borderRadius: 12,
 		padding: 12,
-		marginTop: 16,
+		marginBottom: 14,
 		gap: 12,
 	},
 	errorText: {
 		fontSize: 13,
-		color: colors.printRequest,
+		color: colors.dangerDark,
 		flex: 1,
 		lineHeight: 18,
 	},

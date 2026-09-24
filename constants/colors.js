@@ -47,5 +47,6 @@ export const colors = {
 
 	// Status Colors
 	danger: "#FF5A5F",
+	dangerDark: "#D32F2F",
 	expense: "#FF5A5F",
 };

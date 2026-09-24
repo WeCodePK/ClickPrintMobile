@@ -71,8 +71,8 @@ const WebPdfViewer = ({ fileId, fileName }) => {
 	if (error) {
 		return (
 			<View style={styles.spinnerOverlay}>
-				<Feather name="alert-circle" size={32} color={colors.printRequest} />
-				<Text style={[styles.spinnerText, { color: colors.printRequest }]}>{error}</Text>
+				<Feather name="alert-circle" size={32} color={colors.dangerDark} />
+				<Text style={[styles.spinnerText, { color: colors.dangerDark }]}>{error}</Text>
 			</View>
 		);
 	}
