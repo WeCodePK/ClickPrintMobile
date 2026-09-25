@@ -276,18 +276,12 @@ const DocumentSettingsForm = ({
 
 	return (
 		<View style={styles.container}>
-			<ScrollView
-				ref={scrollViewRef}
-				style={styles.scrollView}
-				contentContainerStyle={[styles.scrollContent, { paddingBottom: footerHeight + 10 + keyboardOffset }]}
-				keyboardShouldPersistTaps="handled"
-				onScroll={(e) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
-				scrollEventThrottle={16}
-			>
+			{/* Fixed: file card and split controls stay put while the settings below scroll */}
+			<View style={styles.fixedHeader}>
 				{/* Document Card */}
 				<View style={styles.documentCard}>
 					<View style={styles.documentIconContainer}>
-						<Feather name="file-text" size={22} color={colors.primary} />
+						<Feather name="file-text" size={22} color={colors.textSecondary} />
 						<Text style={styles.extensionBadge}>{extension}</Text>
 					</View>
 					<View style={styles.documentInfo}>
@@ -351,7 +345,16 @@ const DocumentSettingsForm = ({
 						</ScrollView>
 					)}
 				</View>
+			</View>
 
+			<ScrollView
+				ref={scrollViewRef}
+				style={styles.scrollView}
+				contentContainerStyle={[styles.scrollContent, { paddingBottom: footerHeight + 10 + keyboardOffset }]}
+				keyboardShouldPersistTaps="handled"
+				onScroll={(e) => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
+				scrollEventThrottle={16}
+			>
 				<View style={styles.settingsSection}>
 					{/* Pages — locked to Custom Range when split, since each part names its own pages */}
 					<View style={styles.pageRangeSection}>
@@ -522,8 +525,15 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: colors.cardBackground,
 	},
+	// Sits above the ScrollView, so the file card and split controls never scroll
+	fixedHeader: {
+		paddingHorizontal: 16,
+		paddingTop: 16,
+		backgroundColor: colors.cardBackground,
+	},
 	scrollContent: {
-		padding: 16,
+		paddingHorizontal: 16,
+		paddingTop: 12,
 	},
 	documentCard: {
 		flexDirection: "row",
@@ -536,18 +546,19 @@ const styles = StyleSheet.create({
 		padding: 10,
 		marginBottom: 12,
 	},
+	// Matches the file icon on the upload screen (uploadDocument/DocumentCard)
 	documentIconContainer: {
-		width: 36,
-		height: 36,
+		width: 44,
+		height: 44,
 		borderRadius: 10,
-		backgroundColor: "rgba(0, 217, 163, 0.1)",
+		backgroundColor: colors.borderLight,
 		justifyContent: "center",
 		alignItems: "center",
 	},
 	extensionBadge: {
 		fontSize: 8,
 		fontWeight: "800",
-		color: colors.primary,
+		color: colors.textSecondary,
 		marginTop: 2,
 	},
 	documentInfo: {
@@ -563,12 +574,13 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		marginTop: 2,
 	},
-	// Top line separates the split controls from the file card above
+	// Lines above and below separate the split controls from the file card and
+	// from the scrolling settings (the bottom one marks where scrolling starts)
 	segmentSection: {
-		marginBottom: 12,
-		paddingTop: 12,
+		paddingVertical: 12,
 		borderTopWidth: 1,
-		borderTopColor: colors.borderLight,
+		borderBottomWidth: 1,
+		borderColor: colors.borderLight,
 	},
 	segmentHeader: {
 		flexDirection: "row",
@@ -654,12 +666,8 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 	},
-	// Top line separates the settings from the split/page-ranges header above
 	settingsSection: {
 		marginBottom: 16,
-		paddingTop: 12,
-		borderTopWidth: 1,
-		borderTopColor: colors.borderLight,
 	},
 	settingRow: {
 		flexDirection: "row",
