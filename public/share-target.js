@@ -11,9 +11,7 @@
 // image's) arrive as form fields, which are ignored here. Without them Chrome
 // turns the text into a "shared.txt" file and sends that instead.
 //
-// The manifest's files.accept list is deliberately broad; the backend decides
-// what's printable. It lists each MIME type AND extension instead of "*/*":
-// in testing, no shared file got through with "*/*" on Chrome for Android.
+// files.accept is "*/*": the backend decides what's printable.
 //
 // SHARED_FILES_CACHE must match the name in utils/sharedFiles.js, and the
 // workers' activate handlers must not delete it.
