@@ -9,6 +9,8 @@
 // The UI groups those entries back into one document with an array of segments.
 
 // The default (empty) per-segment settings used by print-settings.jsx.
+// `duplexOverride` is UI-only (never sent to the backend): null while the flip
+// edge follows the orientation, or "long"/"short" once the user picks one.
 export const DEFAULT_SETTINGS = {
 	color: "bw",
 	pageType: "A4",
@@ -16,36 +18,52 @@ export const DEFAULT_SETTINGS = {
 	pagesPerSheet: 1,
 	numberOfCopies: "1",
 	pageSelection: "",
-	sidedness: "none",
+	// Double-sided by default, flipping on the edge that suits the default portrait orientation
+	sidedness: "long",
+	duplexOverride: null,
 };
+
+// Double-sided pages flip on the long edge in portrait and the short edge in
+// landscape, so the back of each page reads the right way up.
+export const defaultDuplexFor = (orientation) => (orientation === "landscape" ? "short" : "long");
 
 // Backend stores `color` as a boolean and `numberOfCopies` as a number; the UI
 // works with "color"/"bw" strings and a string copy count. Empty/unset settings
 // fall back to the defaults so a half-finished draft still renders.
 export const settingsFromBackend = (s) => {
 	if (!s || Object.keys(s).length === 0) return { ...DEFAULT_SETTINGS };
+	const orientation = s.orientation ?? DEFAULT_SETTINGS.orientation;
+	// Missing sidedness defaults to double-sided on the edge matching the orientation
+	const sidedness = s.sidedness ?? defaultDuplexFor(orientation);
 	return {
 		color: s.color ? "color" : "bw",
 		pageType: s.pageType ?? DEFAULT_SETTINGS.pageType,
-		orientation: s.orientation ?? DEFAULT_SETTINGS.orientation,
+		orientation,
 		pagesPerSheet: s.pagesPerSheet ?? DEFAULT_SETTINGS.pagesPerSheet,
 		numberOfCopies: String(s.numberOfCopies ?? DEFAULT_SETTINGS.numberOfCopies),
 		pageSelection: s.pageSelection ?? DEFAULT_SETTINGS.pageSelection,
-		sidedness: s.sidedness ?? DEFAULT_SETTINGS.sidedness,
+		sidedness,
+		// The backend doesn't store whether the edge was chosen by hand, so treat
+		// a saved edge that differs from the orientation's default as an override.
+		duplexOverride: sidedness !== "none" && sidedness !== defaultDuplexFor(orientation) ? sidedness : null,
 	};
 };
 
 const fileIdOf = (f) => f.file?._id || f.file;
 
-// { fileId, name } entries — one per unique file, in first-seen order. Because a
-// split file appears as several `draft.files` entries, we dedupe by file id so a
-// document is only listed once.
+// { fileId, name, numberOfPages?, size? } entries — one per unique file, in
+// first-seen order. Because a split file appears as several `draft.files`
+// entries, we dedupe by file id so a document is only listed once. Page count
+// and size (bytes) are only included when the backend sends them.
 export const documentsFromDraft = (draft) => {
 	const seen = new Map();
 	for (const f of draft?.files || []) {
 		const id = fileIdOf(f);
 		if (!seen.has(id)) {
-			seen.set(id, { fileId: id, name: f.file?.name || "File" });
+			const doc = { fileId: id, name: f.file?.name || "File" };
+			if (f.file?.numberOfPages != null) doc.numberOfPages = f.file.numberOfPages;
+			if (f.file?.size != null) doc.size = f.file.size;
+			seen.set(id, doc);
 		}
 	}
 	return Array.from(seen.values());
@@ -71,6 +89,7 @@ export const flattenSegments = (segmentsArray) => (segmentsArray || []).flat();
 
 export default {
 	DEFAULT_SETTINGS,
+	defaultDuplexFor,
 	settingsFromBackend,
 	documentsFromDraft,
 	segmentsArrayFromDraft,

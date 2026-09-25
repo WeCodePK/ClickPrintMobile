@@ -2,24 +2,29 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useState, useRef, useEffect } from "react";
-import { ActivityIndicator, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, Dimensions, Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import { colors } from "../../../constants/colors";
-import SettingRow from "./SettingRow";
+import DropdownRow, { DROPDOWN_WIDTH } from "./DropdownRow";
+import { defaultDuplexFor } from "../../../utils/draft";
+import { exceedsPageCount, firstSharedPage } from "../../../utils/pageRanges";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const KEYBOARD_EXTRA_OFFSET = 20;
 
 
 
-const PAGE_RANGE_REGEX = /^(\d+(-\d+)?)(,\s*\d+(-\d+)?)*$/;
+// Comma-separated pages and ranges; a range may be open-ended ("2-" = page 2 to the end).
+const PAGE_RANGE_REGEX = /^(\d+(-\d*)?)(,\s*\d+(-\d*)?)*$/;
 
 const isValidAdvancedRange = (value) => {
 	if (!value || !PAGE_RANGE_REGEX.test(value.trim())) return false;
 	const segments = value.trim().split(/,\s*/);
 	for (const seg of segments) {
 		if (seg.includes("-")) {
-			const [a, b] = seg.split("-").map(Number);
-			if (a < 1 || b < a) return false;
+			const [start, end] = seg.split("-");
+			const a = Number(start);
+			if (a < 1) return false;
+			if (end !== "" && Number(end) < a) return false;
 		} else {
 			if (Number(seg) < 1) return false;
 		}
@@ -27,17 +32,45 @@ const isValidAdvancedRange = (value) => {
 	return true;
 };
 
-const SIDEDNESS_OPTIONS = [
-	{ label: "Single", value: "none" },
-	{ label: "Double: short edge", value: "short" },
-	{ label: "Double: long edge", value: "long" },
+const PAGES_PER_SHEET_OPTIONS = [1, 2, 4, 6, 9, 16].map((n) => ({ label: String(n), value: n }));
+
+const COLOR_OPTIONS = [
+	{ label: "Black & White", value: "bw" },
+	{ label: "Color", value: "color" },
 ];
 
-// Short human label for a segment's page range, e.g. "" -> "All pages",
-// "1" -> "Page 1", "2-" -> "Pages 2–end", "2-5" -> "Pages 2–5".
+const ORIENTATION_OPTIONS = [
+	{ label: "Portrait", value: "portrait" },
+	{ label: "Landscape", value: "landscape" },
+];
+
+// The backend's single `sidedness` field ("none" | "long" | "short") is shown as
+// two controls: Print Sides (single/double) and, when double, the Duplex edge.
+const PRINT_SIDES_OPTIONS = [
+	{ label: "Double", value: "double" },
+	{ label: "Single", value: "single" },
+];
+
+const DUPLEX_OPTIONS = [
+	{ label: "Flip on Long Edge", value: "long" },
+	{ label: "Flip on Short Edge", value: "short" },
+];
+
+const PAGE_SIZE_OPTIONS = [
+	{ label: "A4", value: "A4" },
+	{ label: "A3", value: "A3" },
+];
+
+const PAGE_RANGE_OPTIONS = [
+	{ label: "All Pages", value: "all" },
+	{ label: "Custom Range", value: "custom" },
+];
+
+// Short human label for a split's page range, e.g. "1" -> "Page 1",
+// "2-" -> "Pages 2–end", "2-5" -> "Pages 2–5"; empty when no range is set.
 const formatPageRange = (value) => {
 	const v = (value || "").trim();
-	if (!v) return "All pages";
+	if (!v) return "";
 	const simple = /^(\d+)-(\d*)$/.exec(v);
 	if (simple) {
 		const [, start, end] = simple;
@@ -48,12 +81,18 @@ const formatPageRange = (value) => {
 	return `Pages ${v}`;
 };
 
-const segmentSummary = (seg) => `${seg.color === "color" ? "Color" : "B&W"} · ${seg.pageType}`;
+// Bytes -> "820 KB" / "2.4 MB".
+const formatFileSize = (bytes) => {
+	if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 //----------------------------------- COMPONENT -----------------------------------//
 
 const DocumentSettingsForm = ({
 	documentName,
+	numberOfPages,
+	fileSize,
 	settings,
 	onSettingsChange,
 	segments = [],
@@ -70,29 +109,27 @@ const DocumentSettingsForm = ({
 	error,
 }) => {
 	const extension = documentName.includes(".") ? documentName.split(".").pop().toUpperCase() : "FILE";
-	// Restore the page-range inputs from a saved selection. A simple "start-end"
-	// (or "start-") selection fills the two boxes; anything else is an advanced range.
+	// "12 pages · 2.4 MB" — each part only when known (the backend doesn't send size yet)
+	const documentMeta = [
+		numberOfPages != null && `${numberOfPages} ${numberOfPages === 1 ? "page" : "pages"}`,
+		fileSize != null && formatFileSize(fileSize),
+	]
+		.filter(Boolean)
+		.join(" · ");
+	// Restore the page-range input from a saved selection.
 	const initialPageSelection = (settings.pageSelection || "").trim();
-	const simpleRangeMatch = /^(\d+)-(\d*)$/.exec(initialPageSelection);
-	const initialAdvanced = initialPageSelection.length > 0 && !simpleRangeMatch;
 	// When the document is split, each segment must name an explicit range, so the
-	// custom range inputs are always shown (no "All" option).
+	// custom range input is always shown (no "All" option).
 	const [pageRange, setPageRange] = useState(initialPageSelection || isSplit ? "custom" : "all");
-	const [startPage, setStartPage] = useState(simpleRangeMatch ? simpleRangeMatch[1] : "");
-	const [endPage, setEndPage] = useState(simpleRangeMatch ? simpleRangeMatch[2] : "");
-	const [advancedMode, setAdvancedMode] = useState(initialAdvanced);
-	const [advancedRange, setAdvancedRange] = useState(initialAdvanced ? initialPageSelection : "");
-	const [isAdvancedRangeValid, setIsAdvancedRangeValid] = useState(initialAdvanced);
-	const [showPagesPerSheetDropdown, setShowPagesPerSheetDropdown] = useState(false);
-	const [showSidednessDropdown, setShowSidednessDropdown] = useState(false);
+	const [rangeInput, setRangeInput] = useState(initialPageSelection);
+	const [isRangeValid, setIsRangeValid] = useState(isValidAdvancedRange(initialPageSelection));
+	const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 	const [keyboardOffset, setKeyboardOffset] = useState(0);
 	const [footerHeight, setFooterHeight] = useState(140);
 	const insets = useSafeAreaInsets();
 
 	const scrollViewRef = useRef(null);
-	const startPageInputRef = useRef(null);
-	const advancedRangeInputRef = useRef(null);
-	const endPageInputRef = useRef(null);
+	const rangeInputRef = useRef(null);
 	const activeInputRef = useRef(null);
 	const scrollOffsetRef = useRef(0);
 
@@ -143,32 +180,32 @@ const DocumentSettingsForm = ({
 	const pagesPerSheet = settings.pagesPerSheet;
 	const numberOfCopies = settings.numberOfCopies;
 
-	const selectedSidednessOption = SIDEDNESS_OPTIONS.find((opt) => opt.value === sidedness) || SIDEDNESS_OPTIONS[0];
+	const isDoubleSided = sidedness !== "none";
+	const duplexOverride = settings.duplexOverride ?? null;
+	// The flip edge follows the orientation unless the user picked one explicitly.
+	// Shown (greyed out) even when single-sided, as a preview of what Double would use.
+	const duplexEdge = duplexOverride ?? defaultDuplexFor(orientation);
 
 	//----------------------------------- HANDLERS -----------------------------------//
 
 	const handlePageRangeChange = (value) => {
 		setPageRange(value);
 		if (value === "custom") {
-			// Auto-focus the page range input after the custom UI renders
+			// Auto-focus the page range input after the dropdown closes and the input renders
 			setTimeout(() => {
-				focusInput(advancedMode ? advancedRangeInputRef : startPageInputRef);
+				focusInput(rangeInputRef);
 			}, 300);
 			return;
 		}
-		setStartPage("");
-		setEndPage("");
-		setAdvancedMode(false);
-		setAdvancedRange("");
-		setIsAdvancedRangeValid(false);
+		setRangeInput("");
+		setIsRangeValid(false);
 		onSettingsChange("pageSelection", "");
 	};
 
-
-	const handleAdvancedRangeChange = (value) => {
-		setAdvancedRange(value);
+	const handleRangeInputChange = (value) => {
+		setRangeInput(value);
 		const valid = isValidAdvancedRange(value);
-		setIsAdvancedRangeValid(valid);
+		setIsRangeValid(valid);
 		if (valid) {
 			onSettingsChange("pageSelection", value.trim());
 		}
@@ -190,40 +227,33 @@ const DocumentSettingsForm = ({
 		}
 	};
 
-	const toggleAdvancedMode = () => {
-		setAdvancedMode((prev) => {
-			const next = !prev;
-			focusInput(next ? advancedRangeInputRef : startPageInputRef);
-			return next;
-		});
-		setAdvancedRange("");
-		setIsAdvancedRangeValid(false);
-		setStartPage("");
-		setEndPage("");
-		onSettingsChange("pageSelection", "");
-	};
+	const rangeBeyondEnd = isRangeValid && exceedsPageCount(rangeInput, numberOfPages);
 
-	const handleStartPageChange = (value) => {
-		setStartPage(value);
-		updateSimplePageSelection(value, endPage);
-	};
-
-	const handleEndPageChange = (value) => {
-		setEndPage(value);
-		updateSimplePageSelection(startPage, value);
-	};
-
-	const updateSimplePageSelection = (start, end) => {
-		const s = start.trim();
-		const e = end.trim();
-		if (!s) {
-			onSettingsChange("pageSelection", "");
-			return;
+	// When split, the first other split that shares a page with this one's range
+	const rangeOverlap = (() => {
+		if (!isSplit || !isRangeValid) return null;
+		for (let i = 0; i < segments.length; i++) {
+			if (i === currentSegmentIndex) continue;
+			const page = firstSharedPage(rangeInput, segments[i].pageSelection);
+			if (page !== null) return { splitIndex: i, page };
 		}
-		if (e) {
-			onSettingsChange("pageSelection", `${s}-${e}`);
-		} else {
-			onSettingsChange("pageSelection", `${s}-`);
+		return null;
+	})();
+
+	const handlePrintSidesChange = (value) => {
+		onSettingsChange("sidedness", value === "double" ? duplexEdge : "none");
+	};
+
+	const handleDuplexChange = (value) => {
+		onSettingsChange("duplexOverride", value);
+		onSettingsChange("sidedness", value);
+	};
+
+	const handleOrientationChange = (value) => {
+		onSettingsChange("orientation", value);
+		// Keep the flip edge in step with the orientation until the user overrides it
+		if (isDoubleSided && !duplexOverride) {
+			onSettingsChange("sidedness", defaultDuplexFor(value));
 		}
 	};
 
@@ -235,10 +265,7 @@ const DocumentSettingsForm = ({
 
 	const isActionDisabled = () => {
 		if (loading) return true;
-		if (pageRange === "custom") {
-			if (advancedMode) return !isAdvancedRangeValid;
-			return !startPage || startPage.trim() === "";
-		}
+		if (pageRange === "custom") return !isRangeValid;
 		if (!colorMode || !orientation || !sidedness || !pageRange || !numberOfCopies || !pageSize) {
 			return true;
 		}
@@ -263,7 +290,10 @@ const DocumentSettingsForm = ({
 						<Feather name="file-text" size={22} color={colors.primary} />
 						<Text style={styles.extensionBadge}>{extension}</Text>
 					</View>
-					<Text style={styles.documentName}>{documentName}</Text>
+					<View style={styles.documentInfo}>
+						<Text style={styles.documentName} numberOfLines={2}>{documentName}</Text>
+						{documentMeta.length > 0 && <Text style={styles.documentMeta}>{documentMeta}</Text>}
+					</View>
 				</View>
 
 				{/* Page-range segments: split a single file so different pages print
@@ -271,14 +301,12 @@ const DocumentSettingsForm = ({
 				<View style={styles.segmentSection}>
 					<View style={styles.segmentHeader}>
 						<View style={styles.segmentHeaderText}>
-							<Text style={styles.segmentTitle}>Page ranges</Text>
-							{!isSplit && (
-								<Text style={styles.segmentSubtitle} numberOfLines = {2}>Print different pages with different settings</Text>
-							)}
+							<Text style={styles.segmentTitle}>Split into parts</Text>
+							<Text style={styles.segmentSubtitle}>Print different pages with different settings</Text>
 						</View>
 						<TouchableOpacity style={styles.addSegmentButton} onPress={onAddSegment}>
 							<Feather name="plus" size={16} color={colors.printRequest} />
-							<Text style={styles.addSegmentText}>{isSplit ? "Add range" : "Split"}</Text>
+							<Text style={styles.addSegmentText}>Split</Text>
 						</TouchableOpacity>
 					</View>
 
@@ -299,10 +327,14 @@ const DocumentSettingsForm = ({
 										activeOpacity={0.8}
 									>
 										<View style={styles.segmentChipTextWrap}>
-											<Text style={[styles.segmentChipRange, active && styles.segmentChipRangeActive]} numberOfLines={1}>
-												{formatPageRange(seg.pageSelection)}
+											<Text style={[styles.segmentChipTitle, active && styles.segmentChipTitleActive]} numberOfLines={1}>
+												Split {i + 1}
 											</Text>
-											<Text style={styles.segmentChipSummary} numberOfLines={1}>{segmentSummary(seg)}</Text>
+											{!!formatPageRange(seg.pageSelection) && (
+												<Text style={styles.segmentChipPages} numberOfLines={1}>
+													{formatPageRange(seg.pageSelection)}
+												</Text>
+											)}
 										</View>
 										{segments.length > 1 && (
 											<TouchableOpacity
@@ -321,212 +353,119 @@ const DocumentSettingsForm = ({
 				</View>
 
 				<View style={styles.settingsSection}>
-					{/* Pages Per Sheet */}
-					<View style={styles.settingRow}>
-						<Text style={styles.settingLabel}>Pages per Sheet</Text>
-						<TouchableOpacity style={styles.dropdownButton} onPress={() => setShowPagesPerSheetDropdown(true)}>
-							<Text style={styles.dropdownButtonText}>{pagesPerSheet}</Text>
-							<Feather name="chevron-down" size={18} color={colors.textPrimary} />
-						</TouchableOpacity>
-					</View>
-
-					<Modal visible={showPagesPerSheetDropdown} transparent animationType="fade" onRequestClose={() => setShowPagesPerSheetDropdown(false)}>
-						<TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowPagesPerSheetDropdown(false)}>
-							<View style={styles.dropdownModal}>
-								<Text style={styles.dropdownModalTitle}>Pages per Sheet</Text>
-								{[1, 2, 4, 6, 9, 16].map((num) => (
-									<TouchableOpacity
-										key={num}
-										style={[styles.dropdownOption, pagesPerSheet === num && styles.dropdownOptionActive]}
-										onPress={() => {
-											onSettingsChange("pagesPerSheet", num);
-											setShowPagesPerSheetDropdown(false);
-										}}
-									>
-										<Text style={[styles.dropdownOptionText, pagesPerSheet === num && styles.dropdownOptionTextActive]}>
-											{num}
-										</Text>
-										{pagesPerSheet === num && <Feather name="check" size={18} color={colors.printRequest} />}
-									</TouchableOpacity>
-								))}
+					{/* Pages — locked to Custom Range when split, since each part names its own pages */}
+					<View style={styles.pageRangeSection}>
+						<DropdownRow
+							label="Pages"
+							options={PAGE_RANGE_OPTIONS}
+							selectedValue={pageRange}
+							onSelect={handlePageRangeChange}
+							style={styles.pageRangeRow}
+							disabled={isSplit}
+						/>
+						{/* Custom range input, sitting directly under the dropdown */}
+						{pageRange === "custom" && (
+							<View style={[styles.pageRangeControl, styles.pageRangeInputWrap]}>
+								<TextInput
+									ref={rangeInputRef}
+									style={[
+										styles.rangeInput,
+										rangeInput.length > 0 &&
+											(isRangeValid && !rangeBeyondEnd && !rangeOverlap ? styles.rangeInputValid : styles.rangeInputInvalid),
+									]}
+									placeholder="eg. 1-5, 8, 11-13"
+									placeholderTextColor={colors.textSecondary}
+									value={rangeInput}
+									onChangeText={handleRangeInputChange}
+									onFocus={(e) => handleInputFocus(e, rangeInputRef)}
+									autoCapitalize="none"
+									keyboardType="number-pad"
+									returnKeyType="done"
+								/>
+								{rangeInput.length > 0 && !isRangeValid && (
+									<Text style={styles.rangeHint}>Use commas and dashes, e.g. 1,3,5-8,10-</Text>
+								)}
+								{rangeBeyondEnd && (
+									<Text style={styles.rangeHint}>
+										This file only has {numberOfPages} {numberOfPages === 1 ? "page" : "pages"}
+									</Text>
+								)}
+								{!rangeBeyondEnd && rangeOverlap && (
+									<Text style={styles.rangeHint}>
+										Page {rangeOverlap.page} is already in Split {rangeOverlap.splitIndex + 1}
+									</Text>
+								)}
 							</View>
-						</TouchableOpacity>
-					</Modal>
-
-					{/* Number of Copies */}
-					<View style={styles.settingRow}>
-						<Text style={styles.settingLabel}>Number of Copies</Text>
-						<View style={styles.copiesContainer}>
-							<TouchableOpacity style={styles.copiesButton} onPress={() => handleCopiesChange(-1)}>
-								<Feather name="minus" size={18} color={colors.textPrimary} />
-							</TouchableOpacity>
-							<Text style={styles.copiesValue}>{numberOfCopies}</Text>
-							<TouchableOpacity style={styles.copiesButton} onPress={() => handleCopiesChange(1)}>
-								<Feather name="plus" size={18} color={colors.textPrimary} />
-							</TouchableOpacity>
-						</View>
+						)}
 					</View>
 
-					{/* Color Mode */}
-					<SettingRow
-						label="Color Mode"
-						options={[
-							{ label: "Color", value: "color" },
-							{ label: "Black & White", value: "bw" },
-						]}
+					<DropdownRow
+						label="Color"
+						options={COLOR_OPTIONS}
 						selectedValue={colorMode}
 						onSelect={(val) => onSettingsChange("color", val)}
 					/>
 
-					{/* Orientation */}
-					<SettingRow
-						label="Orientation"
-						options={[
-							{ label: "Landscape", value: "landscape" },
-							{ label: "Portrait", value: "portrait" },
-						]}
-						selectedValue={orientation}
-						onSelect={(val) => onSettingsChange("orientation", val)}
+					<DropdownRow
+						label="Print Sides"
+						options={PRINT_SIDES_OPTIONS}
+						selectedValue={isDoubleSided ? "double" : "single"}
+						onSelect={handlePrintSidesChange}
 					/>
 
-					{/* Sidedness Dropdown */}
-					<View style={styles.settingRow}>
-						<Text style={styles.settingLabel}>Sidedness</Text>
-						<TouchableOpacity style={styles.dropdownButton} onPress={() => setShowSidednessDropdown(true)}>
-							<Text style={styles.dropdownButtonText}>{selectedSidednessOption.label}</Text>
-							<Feather name="chevron-down" size={18} color={colors.textPrimary} />
-						</TouchableOpacity>
-					</View>
+					{/* Advanced settings — collapsed by default */}
+					<TouchableOpacity
+						style={styles.advancedSettingsToggle}
+						onPress={() => setShowAdvancedSettings((prev) => !prev)}
+						activeOpacity={0.7}
+					>
+						<Text style={styles.advancedSettingsTitle}>Advanced settings</Text>
+						<Feather name={showAdvancedSettings ? "chevron-up" : "chevron-down"} size={20} color={colors.textPrimary} />
+					</TouchableOpacity>
 
-					<Modal visible={showSidednessDropdown} transparent animationType="fade" onRequestClose={() => setShowSidednessDropdown(false)}>
-						<TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSidednessDropdown(false)}>
-							<View style={styles.dropdownModal}>
-								<Text style={styles.dropdownModalTitle}>Sidedness</Text>
-								{SIDEDNESS_OPTIONS.map((opt) => (
-									<TouchableOpacity
-										key={opt.value}
-										style={[styles.dropdownOption, sidedness === opt.value && styles.dropdownOptionActive]}
-										onPress={() => {
-											onSettingsChange("sidedness", opt.value);
-											setShowSidednessDropdown(false);
-										}}
-									>
-										<Text style={[styles.dropdownOptionText, sidedness === opt.value && styles.dropdownOptionTextActive]}>
-											{opt.label}
-										</Text>
-										{sidedness === opt.value && <Feather name="check" size={18} color={colors.printRequest} />}
+					{showAdvancedSettings && (
+						<View style={styles.advancedSettingsPane}>
+							<View style={styles.settingRow}>
+								<Text style={styles.settingLabel}>Copies</Text>
+								<View style={styles.copiesContainer}>
+									<TouchableOpacity style={styles.copiesButton} onPress={() => handleCopiesChange(-1)}>
+										<Feather name="minus" size={18} color={colors.textPrimary} />
 									</TouchableOpacity>
-								))}
+									<Text style={styles.copiesValue}>{numberOfCopies}</Text>
+									<TouchableOpacity style={styles.copiesButton} onPress={() => handleCopiesChange(1)}>
+										<Feather name="plus" size={18} color={colors.textPrimary} />
+									</TouchableOpacity>
+								</View>
 							</View>
-						</TouchableOpacity>
-					</Modal>
 
-					{/* Page Size */}
-					<SettingRow
-						label="Page Size"
-						options={[
-							{ label: "A3", value: "A3" },
-							{ label: "A4", value: "A4" },
-						]}
-						selectedValue={pageSize}
-						onSelect={(val) => onSettingsChange("pageType", val)}
-					/>
+							<DropdownRow
+								label="Page Size"
+								options={PAGE_SIZE_OPTIONS}
+								selectedValue={pageSize}
+								onSelect={(val) => onSettingsChange("pageType", val)}
+							/>
 
-					{/* Page Range — hidden when split, since each segment names its own range */}
-					{!isSplit && (
-						<SettingRow
-							label="Page Range"
-							options={[
-								{ label: "Custom", value: "custom" },
-								{ label: "All", value: "all" },
-							]}
-							selectedValue={pageRange}
-							onSelect={handlePageRangeChange}
-						/>
-					)}
+							<DropdownRow
+								label="Orientation"
+								options={ORIENTATION_OPTIONS}
+								selectedValue={orientation}
+								onSelect={handleOrientationChange}
+							/>
 
-					{/* Adv Range Toggle*/}
-					{(isSplit || pageRange === "custom") && (
-						<View style={styles.customRangeContainer}>
-							{isSplit && <Text style={styles.appliesToLabel}>Applies to pages</Text>}
-							{/* Adv Range Toggle Button */}
-							<TouchableOpacity
-								style={[styles.advancedToggleButton, advancedMode && styles.advancedToggleButtonActive]}
-								onPress={toggleAdvancedMode}
-							>
-								<Feather
-									name={advancedMode ? "list" : "edit-3"}
-									size={16}
-									color={advancedMode ? colors.cardBackground : colors.printRequest}
-								/>
-								<Text style={[styles.advancedToggleText, advancedMode && styles.advancedToggleTextActive]}>
-									{advancedMode ? "Simple Range" : "Advanced Range"}
-								</Text>
-							</TouchableOpacity>
+							<DropdownRow
+								label="Duplex"
+								options={DUPLEX_OPTIONS}
+								selectedValue={duplexEdge}
+								onSelect={handleDuplexChange}
+								disabled={!isDoubleSided}
+							/>
 
-							{advancedMode ? (
-								/* Adv Range Input */
-								<View>
-									<Text style={styles.pageInputLabel}>Page Range</Text>
-									<TextInput
-										ref={advancedRangeInputRef}
-										style={[
-											styles.advancedRangeInput,
-											advancedRange.length > 0 &&
-											(isAdvancedRangeValid
-												? styles.advancedRangeInputValid
-												: styles.advancedRangeInputInvalid),
-										]}
-										placeholder="e.g. 1,3,16-20,25"
-										placeholderTextColor={colors.textSecondary}
-										value={advancedRange}
-										onChangeText={handleAdvancedRangeChange}
-										onFocus={(e) => handleInputFocus(e, advancedRangeInputRef)}
-										autoCapitalize="none"
-										returnKeyType="done"
-									/>
-									{advancedRange.length > 0 && !isAdvancedRangeValid && (
-										<Text style={styles.advancedRangeHint}>Use commas and dashes, e.g. 1,3,16-20,25</Text>
-									)}
-								</View>
-							) : (
-								/* Simple Start/End Page Inputs */
-								<View style={styles.pageInputRow}>
-									<View style={styles.pageInputGroup}>
-										<Text style={styles.pageInputLabel}>Start Page *</Text>
-										<TextInput
-											ref={startPageInputRef}
-											style={styles.pageInput}
-											keyboardType="number-pad"
-											placeholder="1"
-											placeholderTextColor={colors.textSecondary}
-											value={startPage}
-											onChangeText={handleStartPageChange}
-											onFocus={(e) => handleInputFocus(e, startPageInputRef)}
-											maxLength={4}
-											returnKeyType="next"
-										/>
-									</View>
-
-									<Text style={styles.pageRangeSeparator}>to</Text>
-
-									<View style={styles.pageInputGroup}>
-										<Text style={styles.pageInputLabel}>End Page </Text>
-										<TextInput
-											ref={endPageInputRef}
-											style={styles.pageInput}
-											keyboardType="number-pad"
-											placeholder="End"
-											placeholderTextColor={colors.textSecondary}
-											value={endPage}
-											onChangeText={handleEndPageChange}
-											onFocus={(e) => handleInputFocus(e, endPageInputRef)}
-											maxLength={4}
-											returnKeyType="done"
-										/>
-									</View>
-								</View>
-							)}
+							<DropdownRow
+								label="Pages per Sheet"
+								options={PAGES_PER_SHEET_OPTIONS}
+								selectedValue={pagesPerSheet}
+								onSelect={(val) => onSettingsChange("pagesPerSheet", val)}
+							/>
 						</View>
 					)}
 				</View>
@@ -584,7 +523,7 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.cardBackground,
 	},
 	scrollContent: {
-		padding: 20,
+		padding: 16,
 	},
 	documentCard: {
 		flexDirection: "row",
@@ -594,12 +533,12 @@ const styles = StyleSheet.create({
 		borderRadius: 14,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
-		padding: 14,
-		marginBottom: 28,
+		padding: 10,
+		marginBottom: 12,
 	},
 	documentIconContainer: {
-		width: 44,
-		height: 44,
+		width: 36,
+		height: 36,
 		borderRadius: 10,
 		backgroundColor: "rgba(0, 217, 163, 0.1)",
 		justifyContent: "center",
@@ -611,14 +550,25 @@ const styles = StyleSheet.create({
 		color: colors.primary,
 		marginTop: 2,
 	},
+	documentInfo: {
+		flex: 1,
+	},
 	documentName: {
 		fontSize: 14,
 		fontWeight: "600",
 		color: colors.textPrimary,
-		flex: 1,
 	},
+	documentMeta: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		marginTop: 2,
+	},
+	// Top line separates the split controls from the file card above
 	segmentSection: {
-		marginBottom: 24,
+		marginBottom: 12,
+		paddingTop: 12,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
 	},
 	segmentHeader: {
 		flexDirection: "row",
@@ -626,6 +576,7 @@ const styles = StyleSheet.create({
 		justifyContent: "space-between",
 		gap: 12,
 	},
+	// Fills the space up to the button, so the subtitle only wraps when it has to
 	segmentHeaderText: {
 		flex: 1,
 	},
@@ -636,7 +587,6 @@ const styles = StyleSheet.create({
 	},
 	segmentSubtitle: {
 		fontSize: 12,
-		width: 200,
 		color: colors.textSecondary,
 		marginTop: 2,
 	},
@@ -658,7 +608,7 @@ const styles = StyleSheet.create({
 	},
 	segmentChips: {
 		gap: 10,
-		paddingTop: 14,
+		paddingTop: 10,
 		paddingBottom: 2,
 	},
 	segmentChip: {
@@ -680,15 +630,15 @@ const styles = StyleSheet.create({
 	segmentChipTextWrap: {
 		flexShrink: 1,
 	},
-	segmentChipRange: {
+	segmentChipTitle: {
 		fontSize: 13,
 		fontWeight: "700",
 		color: colors.textPrimary,
 	},
-	segmentChipRangeActive: {
+	segmentChipTitleActive: {
 		color: colors.printRequest,
 	},
-	segmentChipSummary: {
+	segmentChipPages: {
 		fontSize: 11,
 		fontWeight: "500",
 		color: colors.textSecondary,
@@ -704,26 +654,18 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 	},
-	appliesToLabel: {
-		fontSize: 12,
-		fontWeight: "700",
-		color: colors.textSecondary,
-		textTransform: "uppercase",
-		letterSpacing: 0.5,
-		marginBottom: 12,
-	},
+	// Top line separates the settings from the split/page-ranges header above
 	settingsSection: {
-		marginBottom: 28,
-		marginTop: 4,
+		marginBottom: 16,
+		paddingTop: 12,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
 	},
 	settingRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		marginBottom: 20,
-		paddingBottom: 20,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
+		marginBottom: 12,
 	},
 	settingLabel: {
 		fontSize: 15,
@@ -731,169 +673,70 @@ const styles = StyleSheet.create({
 		color: colors.textPrimary,
 		flexShrink: 0,
 	},
-	dropdownButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingVertical: 10,
-		paddingHorizontal: 16,
-		borderRadius: 8,
+	rangeInput: {
 		borderWidth: 1.5,
 		borderColor: colors.borderLight,
-		backgroundColor: colors.background,
-		minWidth: 160, // fixed instead of minWidth: 100
-		gap: 8,
-	},
-	dropdownButtonText: {
-		fontSize: 15,
-		fontWeight: "600",
-		color: colors.textPrimary,
-	},
-	modalOverlay: {
-		flex: 1,
-		backgroundColor: "rgba(0, 0, 0, 0.5)",
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	dropdownModal: {
-		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
+		borderRadius: 8,
 		paddingVertical: 8,
-		width: "75%",
-		maxWidth: 300,
-		shadowColor: "#000",
-		shadowOffset: { width: 0, height: 8 },
-		shadowOpacity: 0.15,
-		shadowRadius: 24,
-		elevation: 12,
-	},
-	dropdownModalTitle: {
-		fontSize: 16,
-		fontWeight: "700",
+		paddingHorizontal: 14,
+		fontSize: 15,
+		fontWeight: "600",
 		color: colors.textPrimary,
-		paddingHorizontal: 20,
-		paddingVertical: 14,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
+		backgroundColor: colors.cardBackground,
 	},
-	dropdownOption: {
+	pageRangeSection: {
+		marginBottom: 12,
+	},
+	// The section around the row owns the bottom spacing (the range input sits between)
+	pageRangeRow: {
+		marginBottom: 0,
+	},
+	// Shared fixed width so the range input lines up exactly with the dropdown above it
+	pageRangeControl: {
+		width: DROPDOWN_WIDTH,
+	},
+	pageRangeInputWrap: {
+		alignSelf: "flex-end",
+		marginTop: 8,
+	},
+	advancedSettingsToggle: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		paddingVertical: 14,
-		paddingHorizontal: 20,
+		gap: 12,
+		paddingTop: 12,
+		paddingBottom: 4,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
 	},
-	dropdownOptionActive: {
-		backgroundColor: "rgba(255, 139, 123, 0.08)",
-	},
-	dropdownOptionText: {
+	advancedSettingsTitle: {
 		fontSize: 15,
-		fontWeight: "500",
-		color: colors.textPrimary,
-	},
-	dropdownOptionTextActive: {
-		fontWeight: "700",
-		color: colors.printRequest,
-	},
-	customRangeContainer: {
-		backgroundColor: colors.background,
-		borderRadius: 12,
-		padding: 16,
-		marginBottom: 20,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-	},
-	advancedToggleButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		paddingVertical: 10,
-		paddingHorizontal: 16,
-		borderRadius: 8,
-		borderWidth: 1.5,
-		borderColor: colors.printRequest,
-		backgroundColor: colors.cardBackground,
-		marginBottom: 16,
-		gap: 8,
-	},
-	advancedToggleButtonActive: {
-		backgroundColor: colors.printRequest,
-		borderColor: colors.printRequest,
-	},
-	advancedToggleText: {
-		fontSize: 13,
-		fontWeight: "600",
-		color: colors.printRequest,
-	},
-	advancedToggleTextActive: {
-		color: colors.cardBackground,
-	},
-	advancedRangeInput: {
-		borderWidth: 2,
-		borderColor: colors.borderLight,
-		borderRadius: 8,
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		fontSize: 16,
 		fontWeight: "600",
 		color: colors.textPrimary,
-		backgroundColor: colors.cardBackground,
 	},
-	advancedRangeInputValid: {
+	advancedSettingsPane: {
+		marginTop: 12,
+	},
+	rangeInputValid: {
 		borderColor: "#2ECC71",
 	},
-	advancedRangeInputInvalid: {
+	rangeInputInvalid: {
 		borderColor: "#E74C3C",
 	},
-	advancedRangeHint: {
+	rangeHint: {
 		fontSize: 11,
 		color: "#E74C3C",
 		marginTop: 6,
 		fontWeight: "500",
 	},
-	pageInputRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		marginBottom: 12,
-	},
-	pageInputGroup: {
-		flex: 1,
-	},
-	pageInputLabel: {
-		fontSize: 12,
-		fontWeight: "600",
-		color: colors.textSecondary,
-		marginBottom: 8,
-		textTransform: "uppercase",
-		letterSpacing: 0.5,
-	},
-	pageInput: {
-		borderWidth: 1.5,
-		borderColor: colors.borderLight,
-		borderRadius: 8,
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		fontSize: 16,
-		fontWeight: "600",
-		color: colors.textPrimary,
-		backgroundColor: colors.cardBackground,
-	},
-	pageRangeSeparator: {
-		fontSize: 14,
-		fontWeight: "600",
-		color: colors.textSecondary,
-		paddingHorizontal: 12,
-		marginTop: 20,
-	},
 	copiesContainer: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 15,
+		gap: 12,
 	},
 	copiesButton: {
-		width: 50,
-		height: 40,
+		width: 44,
+		height: 36,
 		borderRadius: 8,
 		borderWidth: 1.5,
 		borderColor: colors.borderLight,

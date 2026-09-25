@@ -208,7 +208,12 @@ const UploadDocument = () => {
 		try {
 			const token = await SecureStore.getItemAsync("authToken");
 			const successfulDocs = documents.filter((d) => d.status === "success" || d.existing);
-			const documentArray = successfulDocs.map((doc) => ({ fileId: doc.fileId, name: doc.name || doc.file.name }));
+			const documentArray = successfulDocs.map((doc) => ({
+				fileId: doc.fileId,
+				name: doc.name || doc.file.name,
+				numberOfPages: doc.file?.numberOfPages,
+				size: doc.file?.size,
+			}));
 
 			let targetDraftId = draftId;
 			if (draftId) {

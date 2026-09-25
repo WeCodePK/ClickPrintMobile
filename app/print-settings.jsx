@@ -2,14 +2,15 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import SecureStore from "../utils/storage";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { showAlert } from "../utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { showAlert } from "../utils/alert";
 import { DEFAULT_SETTINGS, documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
+import { exceedsPageCount, findSplitOverlap } from "../utils/pageRanges";
+import SecureStore from "../utils/storage";
 import DocumentSettingsForm from "./components/printSettings/DocumentSettingsForm";
 
 //----------------------------------- CONSTANTS -----------------------------------//
@@ -20,7 +21,7 @@ const API_BASE_URL = config.apiBaseUrl;
 
 // A segment is complete when every required field is set and copies is a valid
 // count. Split documents (>1 segment) additionally require an explicit page
-// range on each segment so their ranges don't overlap or leave gaps.
+// range on each segment.
 const isSegmentComplete = (s, isSplit) => {
 	if (!s || !s.color || !s.pageType || !s.orientation || !s.sidedness || !s.numberOfCopies) return false;
 	const copies = parseInt(s.numberOfCopies);
@@ -29,10 +30,41 @@ const isSegmentComplete = (s, isSplit) => {
 	return true;
 };
 
-const isDocComplete = (segments) => {
+// First problem with a document's settings as { segmentIndex, title, message },
+// or null when it's ready: an incomplete segment, a page range past the end of
+// the file (when its page count is known), or two splits that share a page.
+const findDocProblem = (segments, docIndex, pageCount) => {
 	const isSplit = segments.length > 1;
-	return segments.every((s) => isSegmentComplete(s, isSplit));
+	const docLabel = `document ${docIndex + 1}`;
+	for (let j = 0; j < segments.length; j++) {
+		const where = isSplit ? `split ${j + 1} of ${docLabel}` : docLabel;
+		if (!isSegmentComplete(segments[j], isSplit)) {
+			return {
+				segmentIndex: j,
+				title: "Incomplete Settings",
+				message: `Please complete the settings (including page range) for ${where}.`,
+			};
+		}
+		if (exceedsPageCount(segments[j].pageSelection, pageCount)) {
+			return {
+				segmentIndex: j,
+				title: "Pages Out of Range",
+				message: `The page range for ${where} goes past the end of the file, which only has ${pageCount} ${pageCount === 1 ? "page" : "pages"}.`,
+			};
+		}
+	}
+	const overlap = isSplit ? findSplitOverlap(segments) : null;
+	if (overlap) {
+		return {
+			segmentIndex: overlap.second,
+			title: "Overlapping Pages",
+			message: `Split ${overlap.first + 1} and split ${overlap.second + 1} of ${docLabel} both include page ${overlap.page}. Each page can only be in one split.`,
+		};
+	}
+	return null;
 };
+
+const isDocComplete = (segments, docIndex, pageCount) => !findDocProblem(segments, docIndex, pageCount);
 
 const newSegment = (from) => ({ ...(from || DEFAULT_SETTINGS), pageSelection: "" });
 
@@ -115,7 +147,11 @@ const PrintSettings = () => {
 				if (!active || !draft) return;
 				const docs = documentsFromDraft(draft);
 				if (docs.length > 0) {
-					setParsedDocuments(docs);
+					// Keep details the draft doesn't carry (e.g. the local file size
+					// passed from the upload screen); draft values win when present.
+					setParsedDocuments((prev) =>
+						docs.map((doc) => ({ ...prev.find((p) => p.fileId === doc.fileId), ...doc }))
+					);
 					setAllSegments(segmentsArrayFromDraft(draft));
 					setCurrentDocIndex(0);
 					setCurrentSegmentIndex(0);
@@ -206,15 +242,11 @@ const PrintSettings = () => {
 
 	const handleProceedToNext = () => {
 		// Validate current document segments before moving forward
-		const currentDocSegs = allSegments[currentDocIndex] || [];
-		const split = currentDocSegs.length > 1;
-		for (let j = 0; j < currentDocSegs.length; j++) {
-			if (!isSegmentComplete(currentDocSegs[j], split)) {
-				setCurrentSegmentIndex(j);
-				const where = split ? `part ${j + 1} of document ${currentDocIndex + 1}` : `document ${currentDocIndex + 1}`;
-				showAlert("Incomplete Settings", `Please complete the settings (including page range) for ${where}.`);
-				return;
-			}
+		const problem = findDocProblem(allSegments[currentDocIndex] || [], currentDocIndex, parsedDocuments[currentDocIndex]?.numberOfPages);
+		if (problem) {
+			setCurrentSegmentIndex(problem.segmentIndex);
+			showAlert(problem.title, problem.message);
+			return;
 		}
 		if (currentDocIndex < numberOfDocuments - 1) {
 			setCurrentDocIndex((prev) => prev + 1);
@@ -227,16 +259,12 @@ const PrintSettings = () => {
 	const handleContinue = () => {
 		// Validate everything, jumping to the first offending document/segment.
 		for (let d = 0; d < allSegments.length; d++) {
-			const segs = allSegments[d];
-			const split = segs.length > 1;
-			for (let j = 0; j < segs.length; j++) {
-				if (!isSegmentComplete(segs[j], split)) {
-					setCurrentDocIndex(d);
-					setCurrentSegmentIndex(j);
-					const where = split ? `part ${j + 1} of document ${d + 1}` : `document ${d + 1}`;
-					showAlert("Incomplete Settings", `Please complete the settings (including page range) for ${where}.`);
-					return;
-				}
+			const problem = findDocProblem(allSegments[d], d, parsedDocuments[d]?.numberOfPages);
+			if (problem) {
+				setCurrentDocIndex(d);
+				setCurrentSegmentIndex(problem.segmentIndex);
+				showAlert(problem.title, problem.message);
+				return;
 			}
 		}
 		navigateToShopDetails();
@@ -359,7 +387,7 @@ const PrintSettings = () => {
 					>
 						{parsedDocuments.map((doc, index) => {
 							const active = index === currentDocIndex;
-							const complete = isDocComplete(allSegments[index] || []);
+							const complete = isDocComplete(allSegments[index] || [], index, doc.numberOfPages);
 							const segCount = (allSegments[index] || []).length;
 							return (
 								<TouchableOpacity
@@ -396,6 +424,8 @@ const PrintSettings = () => {
 				<DocumentSettingsForm
 					key={`${currentDocIndex}-${safeSegmentIndex}`}
 					documentName={currentDoc.name}
+					numberOfPages={currentDoc.numberOfPages}
+					fileSize={currentDoc.size}
 					settings={currentSegments[safeSegmentIndex]}
 					onSettingsChange={handleSettingsChange}
 					segments={currentSegments}
@@ -428,7 +458,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 20,
-		paddingVertical: 16,
+		paddingVertical: 10,
 		backgroundColor: colors.cardBackground,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
@@ -449,12 +479,11 @@ const styles = StyleSheet.create({
 	},
 	tabsWrapper: {
 		backgroundColor: colors.cardBackground,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
 	},
+	// No bottom padding: with no divider, the form's own top padding spaces the file card
 	tabsContent: {
 		paddingHorizontal: 16,
-		paddingVertical: 12,
+		paddingTop: 12,
 		gap: 8,
 	},
 	tab: {
