@@ -44,6 +44,7 @@ const QRScanner = () => {
 	const [showManualEntry, setShowManualEntry] = useState(false);
 	const [manualCode, setManualCode] = useState("");
 	const [scannedShop, setScannedShop] = useState(null);
+	const [scanError, setScanError] = useState(null); // { title, message }
 	const scanLineAnim = useRef(new Animated.Value(0)).current;
 	const hasProcessedRef = useRef(false);
 
@@ -77,6 +78,7 @@ const QRScanner = () => {
 		setScanned(false);
 		setProcessing(false);
 		setScannedShop(null);
+		setScanError(null);
 		hasProcessedRef.current = false;
 	}, []);
 
@@ -88,15 +90,12 @@ const QRScanner = () => {
 		async (shopId) => {
 			if (!shopId) {
 				// Keep scanned=true so the camera doesn't keep firing.
-				// Only reset after the user acknowledges the alert.
-				showAlert("Invalid QR Code", "This QR code doesn't contain a valid shop link.", [
-					{
-						text: "OK",
-						onPress: () => {
-							resetScanner();
-						},
-					},
-				]);
+				// Show error card instead of an alert.
+				setProcessing(false);
+				setScanError({
+					title: "Invalid QR Code",
+					message: "This QR code doesn't contain a valid shop link. Try scanning a ClickPrint shop QR code.",
+				});
 				return;
 			}
 
@@ -116,14 +115,11 @@ const QRScanner = () => {
 				});
 
 				if (!shopRes.ok) {
-					showAlert("Shop Not Found", "The scanned QR code doesn't match any registered shop.", [
-						{
-							text: "OK",
-							onPress: () => {
-								resetScanner();
-							},
-						},
-					]);
+					setProcessing(false);
+					setScanError({
+						title: "Shop Not Found",
+						message: "The scanned QR code doesn't match any registered shop. Please try a different code.",
+					});
 					return;
 				}
 
@@ -135,14 +131,11 @@ const QRScanner = () => {
 				setProcessing(false);
 			} catch (err) {
 				console.error("QR scan error:", err);
-				showAlert("Error", err.message || "Something went wrong. Please try again.", [
-					{
-						text: "OK",
-						onPress: () => {
-							resetScanner();
-						},
-					},
-				]);
+				setProcessing(false);
+				setScanError({
+					title: "Something Went Wrong",
+					message: err.message || "An error occurred while processing the QR code. Please try again.",
+				});
 			}
 		},
 		[router, resetScanner]
@@ -274,6 +267,7 @@ const QRScanner = () => {
 							onSubmit={handleManualSubmit}
 							onClose={() => setShowManualEntry(false)}
 							processing={processing}
+							bottomInset={insets.bottom}
 						/>
 					)}
 				</View>
@@ -340,7 +334,7 @@ const QRScanner = () => {
 				</View>
 
 				{/* Bottom section */}
-				<View style={styles.bottomSection}>
+				<View style={[styles.bottomSection, { paddingBottom: 60 + insets.bottom }]}>
 					<Text style={styles.instructionText}>
 						Point your camera at a shop's QR code
 					</Text>
@@ -356,6 +350,43 @@ const QRScanner = () => {
 				</View>
 			</View>
 
+			{/* Error Bottom Card */}
+			{scanError && (
+				<View style={styles.errorCardBackdrop} pointerEvents="box-none">
+					<View style={[styles.errorCard, { paddingBottom: 24 + insets.bottom }]}>
+						<View style={styles.errorCardHandle} />
+
+						<View style={styles.errorIconContainer}>
+							<Feather name="alert-circle" size={36} color={colors.danger} />
+						</View>
+
+						<Text style={styles.errorCardTitle}>{scanError.title}</Text>
+						<Text style={styles.errorCardMessage}>{scanError.message}</Text>
+
+						<TouchableOpacity
+							style={styles.errorRetryButton}
+							onPress={resetScanner}
+							activeOpacity={0.85}
+						>
+							<Feather name="refresh-cw" size={18} color={colors.cardBackground} />
+							<Text style={styles.errorRetryButtonText}>Try Again</Text>
+						</TouchableOpacity>
+
+						<TouchableOpacity
+							style={styles.errorManualButton}
+							onPress={() => {
+								setScanError(null);
+								setShowManualEntry(true);
+							}}
+							activeOpacity={0.8}
+						>
+							<Feather name="edit-3" size={16} color={colors.primary} />
+							<Text style={styles.errorManualButtonText}>Enter URL Manually</Text>
+						</TouchableOpacity>
+					</View>
+				</View>
+			)}
+
 			{/* Manual entry sheet */}
 			{showManualEntry && (
 				<ManualEntrySheet
@@ -364,6 +395,7 @@ const QRScanner = () => {
 					onSubmit={handleManualSubmit}
 					onClose={() => setShowManualEntry(false)}
 					processing={processing}
+					bottomInset={insets.bottom}
 				/>
 			)}
 
@@ -375,7 +407,7 @@ const QRScanner = () => {
 				onRequestClose={handleScanAgain}
 			>
 				<View style={styles.modalBackdrop}>
-					<View style={[styles.previewSheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+					<View style={[styles.previewSheet, { paddingBottom: insets.bottom + 6 }]}>
 						{/* Sheet Header Handle */}
 						<View style={styles.sheetHandle} />
 
@@ -484,10 +516,10 @@ const QRScanner = () => {
 };
 
 // Bottom sheet for manual code entry
-const ManualEntrySheet = ({ value, onChangeText, onSubmit, onClose, processing }) => {
+const ManualEntrySheet = ({ value, onChangeText, onSubmit, onClose, processing, bottomInset = 0 }) => {
 	return (
 		<View style={styles.manualSheet}>
-			<View style={styles.manualSheetContent}>
+			<View style={[styles.manualSheetContent, { paddingBottom: 24 + bottomInset }]}>
 				<View style={styles.manualSheetHeader}>
 					<Text style={styles.manualSheetTitle}>Enter Shop Code</Text>
 					<TouchableOpacity onPress={onClose} hitSlop={8}>
@@ -737,7 +769,6 @@ const styles = StyleSheet.create({
 	// ---- Bottom Section ----
 	bottomSection: {
 		alignItems: "center",
-		paddingBottom: 60,
 		gap: 16,
 	},
 	instructionText: {
@@ -773,8 +804,8 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.cardBackground,
 		borderTopLeftRadius: 24,
 		borderTopRightRadius: 24,
-		padding: 24,
-		paddingBottom: 40,
+		paddingTop: 24,
+		paddingHorizontal: 24,
 		gap: 14,
 	},
 	manualSheetHeader: {
@@ -830,6 +861,90 @@ const styles = StyleSheet.create({
 		color: colors.cardBackground,
 	},
 
+	// ---- Error Bottom Card ----
+	errorCardBackdrop: {
+		...StyleSheet.absoluteFillObject,
+		justifyContent: "flex-end",
+		backgroundColor: "rgba(0, 0, 0, 0.45)",
+	},
+	errorCard: {
+		backgroundColor: colors.cardBackground,
+		borderTopLeftRadius: 28,
+		borderTopRightRadius: 28,
+		paddingTop: 12,
+		paddingHorizontal: 24,
+		alignItems: "center",
+		gap: 10,
+	},
+	errorCardHandle: {
+		width: 40,
+		height: 5,
+		borderRadius: 3,
+		backgroundColor: colors.borderLight,
+		marginBottom: 12,
+	},
+	errorIconContainer: {
+		width: 72,
+		height: 72,
+		borderRadius: 36,
+		backgroundColor: "rgba(255, 90, 95, 0.1)",
+		justifyContent: "center",
+		alignItems: "center",
+		marginBottom: 4,
+	},
+	errorCardTitle: {
+		fontSize: 20,
+		fontWeight: "700",
+		color: colors.textPrimary,
+		textAlign: "center",
+	},
+	errorCardMessage: {
+		fontSize: 14,
+		color: colors.textSecondary,
+		textAlign: "center",
+		lineHeight: 20,
+		paddingHorizontal: 10,
+		marginBottom: 6,
+	},
+	errorRetryButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		backgroundColor: colors.primary,
+		paddingVertical: 14,
+		paddingHorizontal: 32,
+		borderRadius: 14,
+		alignSelf: "stretch",
+		shadowColor: colors.shadowPrimary,
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 1,
+		shadowRadius: 12,
+		elevation: 4,
+	},
+	errorRetryButtonText: {
+		fontSize: 16,
+		fontWeight: "700",
+		color: colors.cardBackground,
+	},
+	errorManualButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		paddingVertical: 12,
+		alignSelf: "stretch",
+		backgroundColor: colors.background,
+		borderRadius: 14,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+	},
+	errorManualButtonText: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: colors.primary,
+	},
+
 	// ---- Shop Preview Modal ----
 	modalBackdrop: {
 		flex: 1,
@@ -853,7 +968,7 @@ const styles = StyleSheet.create({
 		marginBottom: 16,
 	},
 	sheetContent: {
-		paddingBottom: 8,
+		paddingBottom: 4,
 		gap: 18,
 	},
 	shopHeaderRow: {
