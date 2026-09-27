@@ -210,6 +210,19 @@ export default function InstallScreen() {
 	useEffect(() => {
 		if (Platform.OS !== "web") return;
 
+		// Preserve shopId from external camera scan (e.g. https://app.clickprint.pk?shopId=...)
+		if (typeof window !== "undefined") {
+			try {
+				const searchParams = new URLSearchParams(window.location.search);
+				const shopId = searchParams.get("shopId") || searchParams.get("shop_id") || searchParams.get("shop");
+				if (shopId) {
+					window.localStorage?.setItem("pendingShopId", shopId);
+				}
+			} catch {
+				// ignore
+			}
+		}
+
 		const sync = () => setCanInstall(!!window.__bipEvent);
 		sync(); // the event may have fired before this screen mounted
 

@@ -25,15 +25,41 @@ const UploadDocument = () => {
 	const insets = useSafeAreaInsets();
 	// `share` is set by the service worker when a share brought no files
 	// (see public/share-target.js).
-	const { draftId, share, received } = useLocalSearchParams();
+	const { draftId, share, received, shopId } = useLocalSearchParams();
 	const [documents, setDocuments] = useState([]);
 	const [picking, setPicking] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [hydrating, setHydrating] = useState(!!draftId);
 	const [error, setError] = useState(null);
 	const [previewDoc, setPreviewDoc] = useState(null);
+	const [attachedShop, setAttachedShop] = useState(null);
 	// Abort handles for in-flight uploads, keyed by document id.
 	const abortersRef = useRef({});
+
+	// Load shop info if shopId is passed as query param or draft has a shop
+	useEffect(() => {
+		const targetShopId = shopId;
+		if (!targetShopId) return;
+		let active = true;
+		(async () => {
+			try {
+				const token = await SecureStore.getItemAsync("authToken");
+				const res = await fetch(`${API_BASE_URL}/shops/${targetShopId}`, {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+				if (res.ok) {
+					const data = await res.json();
+					const shop = data.data?.shop || data.shop;
+					if (active && shop) setAttachedShop(shop);
+				}
+			} catch (e) {
+				console.error("Could not fetch attached shop info:", e);
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [shopId]);
 
 	// Stop in-flight uploads when leaving the screen.
 	useEffect(() => {
@@ -60,6 +86,22 @@ const UploadDocument = () => {
 				const data = await response.json();
 				const draft = data.data?.draft || null;
 				if (!active || !draft) return;
+
+				if (draft.shop) {
+					if (typeof draft.shop === "object" && draft.shop.name) {
+						setAttachedShop(draft.shop);
+					} else if (typeof draft.shop === "string") {
+						const res = await fetch(`${API_BASE_URL}/shops/${draft.shop}`, {
+							headers: { Authorization: `Bearer ${token}` },
+						});
+						if (res.ok) {
+							const sData = await res.json();
+							const s = sData.data?.shop || sData.shop;
+							if (active && s) setAttachedShop(s);
+						}
+					}
+				}
+
 				const existingDocs = (draft.files || []).map((f) => {
 					const originalName = f.file?.name || "Document";
 					const fileId = f.file?._id || f.file;
@@ -215,6 +257,7 @@ const UploadDocument = () => {
 				size: doc.file?.size,
 			}));
 
+			const effectiveShopId = attachedShop?._id || shopId || null;
 			let targetDraftId = draftId;
 			if (draftId) {
 				const files = successfulDocs.map((doc) => {
@@ -222,13 +265,15 @@ const UploadDocument = () => {
 					if (doc.settings && Object.keys(doc.settings).length > 0) entry.settings = doc.settings;
 					return entry;
 				});
+				const payload = { files };
+				if (effectiveShopId) payload.shop = effectiveShopId;
 				const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
 					method: "PUT",
 					headers: {
 						Authorization: `Bearer ${token}`,
 						"Content-Type": "application/json",
 					},
-					body: JSON.stringify({ files }),
+					body: JSON.stringify(payload),
 				});
 				const updateData = await updateResponse.json();
 				if (!updateResponse.ok) {
@@ -237,13 +282,15 @@ const UploadDocument = () => {
 				console.log("Draft updated with files:", targetDraftId);
 			} else {
 				const draftFiles = documentArray.map((doc) => ({ file: doc.fileId }));
+				const payload = { files: draftFiles };
+				if (effectiveShopId) payload.shop = effectiveShopId;
 				const draftResponse = await fetch(`${API_BASE_URL}/drafts`, {
 					method: "POST",
 					headers: {
 						Authorization: `Bearer ${token}`,
 						"Content-Type": "application/json",
 					},
-					body: JSON.stringify({ files: draftFiles }),
+					body: JSON.stringify(payload),
 				});
 				const draftData = await draftResponse.json();
 				if (!draftResponse.ok) {
@@ -259,6 +306,7 @@ const UploadDocument = () => {
 				params: {
 					draftId: targetDraftId,
 					documents: JSON.stringify(documentArray),
+					...(effectiveShopId ? { shopId: effectiveShopId } : {}),
 				},
 			});
 		} catch (err) {
@@ -288,6 +336,15 @@ const UploadDocument = () => {
 				<Text style={styles.headerTitle}>Upload Documents</Text>
 				<View style={styles.placeholder} />
 			</View>
+
+			{attachedShop && (
+				<View style={styles.shopBanner}>
+					<Feather name="map-pin" size={15} color={colors.primary} />
+					<Text style={styles.shopBannerText} numberOfLines={1}>
+						Printing at: <Text style={styles.shopBannerName}>{attachedShop.name}</Text>
+					</Text>
+				</View>
+			)}
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 				<View style={styles.section}>
 
@@ -544,6 +601,25 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 		fontWeight: "700",
 		color: "#f4efefff",
+	},
+	shopBanner: {
+		flexDirection: "row",
+		alignItems: "center",
+		backgroundColor: "rgba(0, 217, 163, 0.12)",
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+		borderBottomWidth: 1,
+		borderBottomColor: "rgba(0, 217, 163, 0.25)",
+		gap: 8,
+	},
+	shopBannerText: {
+		fontSize: 13,
+		color: colors.textSecondary,
+		flex: 1,
+	},
+	shopBannerName: {
+		fontWeight: "700",
+		color: colors.textPrimary,
 	},
 });
 

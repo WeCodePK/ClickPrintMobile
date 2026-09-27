@@ -43,6 +43,12 @@ export default {
 			"expo-router",
 			"expo-font",
 			"expo-web-browser",
+			[
+				"expo-camera",
+				{
+					cameraPermission: "Allow ClickPrint to use your camera to scan shop QR codes.",
+				},
+			],
 			// Push Notification 1 :: Added expo-notification to plugins in config
 			"expo-notifications",
 			"@react-native-community/datetimepicker",

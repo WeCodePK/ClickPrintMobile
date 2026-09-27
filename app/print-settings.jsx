@@ -126,7 +126,32 @@ const PrintSettings = () => {
 	});
 	const [hydrating, setHydrating] = useState(!!draftId);
 	const [submitting, setSubmitting] = useState(false);
-	const [draftShopId, setDraftShopId] = useState(null);
+	const [draftShopId, setDraftShopId] = useState(params.shopId || null);
+	const [shopName, setShopName] = useState(null);
+
+	// Load shop name if draftShopId is present
+	useEffect(() => {
+		if (!draftShopId) return;
+		let active = true;
+		(async () => {
+			try {
+				const token = await SecureStore.getItemAsync("authToken");
+				const res = await fetch(`${API_BASE_URL}/shops/${draftShopId}`, {
+					headers: { Authorization: `Bearer ${token}` },
+				});
+				if (res.ok) {
+					const data = await res.json();
+					const s = data.data?.shop || data.shop;
+					if (active && s?.name) setShopName(s.name);
+				}
+			} catch (e) {
+				console.error("Could not fetch shop name for settings:", e);
+			}
+		})();
+		return () => {
+			active = false;
+		};
+	}, [draftShopId]);
 
 	// Restore files + settings from the saved draft so resuming (or coming back
 	// from shop selection) shows exactly what was persisted last.
@@ -156,9 +181,11 @@ const PrintSettings = () => {
 					setCurrentDocIndex(0);
 					setCurrentSegmentIndex(0);
 				}
-				const shopId = draft.shop?._id || (typeof draft.shop === "string" ? draft.shop : null);
+				const shopObj = draft.shop;
+				const shopId = shopObj?._id || (typeof shopObj === "string" ? shopObj : null);
 				if (shopId) {
 					setDraftShopId(shopId);
+					if (shopObj?.name) setShopName(shopObj.name);
 				}
 			} catch (e) {
 				console.error("Error loading draft settings:", e);
@@ -311,6 +338,19 @@ const PrintSettings = () => {
 			console.log("Draft updated with settings:", data);
 
 			if (draftShopId) {
+				try {
+					await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
+						method: "PUT",
+						headers: {
+							Authorization: `Bearer ${token}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ shop: draftShopId }),
+					});
+				} catch (e) {
+					console.error("Could not update shop on draft:", e);
+				}
+
 				const checkResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}/check`, {
 					method: "PATCH",
 					headers: {
@@ -349,7 +389,7 @@ const PrintSettings = () => {
 	// Back returns to the upload screen (which repopulates the draft's files).
 	const handleBack = () => {
 		if (draftId) {
-			router.replace({ pathname: "/upload-document", params: { draftId } });
+			router.replace({ pathname: "/upload-document", params: { draftId, ...(draftShopId ? { shopId: draftShopId } : {}) } });
 		} else {
 			router.replace("/(tabs)/home");
 		}
@@ -369,6 +409,15 @@ const PrintSettings = () => {
 				<Text style={styles.headerTitle}>Print Settings</Text>
 				<View style={styles.placeholder} />
 			</View>
+
+			{shopName && (
+				<View style={styles.shopBanner}>
+					<Feather name="map-pin" size={14} color={colors.primary} />
+					<Text style={styles.shopBannerText} numberOfLines={1}>
+						Printing at: <Text style={styles.shopBannerName}>{shopName}</Text>
+					</Text>
+				</View>
+			)}
 
 			{/* Document tabs — direct access to each file, with a completeness dot.
 			    Only shown when there's more than one document. */}
@@ -546,6 +595,25 @@ const styles = StyleSheet.create({
 		marginTop: 16,
 		fontSize: 16,
 		color: colors.textSecondary,
+	},
+	shopBanner: {
+		flexDirection: "row",
+		alignItems: "center",
+		backgroundColor: "rgba(0, 217, 163, 0.12)",
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+		borderBottomWidth: 1,
+		borderBottomColor: "rgba(0, 217, 163, 0.25)",
+		gap: 8,
+	},
+	shopBannerText: {
+		fontSize: 13,
+		color: colors.textSecondary,
+		flex: 1,
+	},
+	shopBannerName: {
+		fontWeight: "700",
+		color: colors.textPrimary,
 	},
 });
 

@@ -62,6 +62,36 @@ const HomePage = () => {
 		loadUserData();
 	};
 
+	// Handle pending shop from external QR scan or browser onboarding
+	useEffect(() => {
+		(async () => {
+			try {
+				const pendingShopId = await SecureStore.getItemAsync("pendingShopId");
+				if (pendingShopId) {
+					await SecureStore.deleteItemAsync("pendingShopId");
+					const token = await SecureStore.getItemAsync("authToken");
+					if (token) {
+						const draftRes = await fetch(`${API_BASE_URL}/drafts`, {
+							method: "POST",
+							headers: {
+								Authorization: `Bearer ${token}`,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({ shop: pendingShopId }),
+						});
+						if (draftRes.ok) {
+							const draftData = await draftRes.json();
+							const draftId = draftData.data?.draft?._id || draftData.draft?._id;
+							router.push(`/upload-document?draftId=${draftId}&shopId=${pendingShopId}`);
+						}
+					}
+				}
+			} catch (err) {
+				console.error("Error processing pending shop:", err);
+			}
+		})();
+	}, [router]);
+
 	const handleDeleteDraft = useCallback((draftId) => {
 		showAlert(
 			"Delete Draft",
@@ -149,10 +179,20 @@ const HomePage = () => {
 				refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} />}
 			>
 				<View style={styles.topCardsContainer}>
-					{/* Welcome Message */}
-					<View style={styles.welcomeContainer}>
-						<Text style={styles.welcomeGreeting}>Welcome back,</Text>
-						<Text style={styles.welcomeName}>{userName || "User"}</Text>
+					{/* Welcome Message + Scan Button */}
+					<View style={styles.welcomeRow}>
+						<View style={styles.welcomeContainer}>
+							<Text style={styles.welcomeGreeting}>Welcome back,</Text>
+							<Text style={styles.welcomeName}>{userName || "User"}</Text>
+						</View>
+						<TouchableOpacity
+							style={styles.scanHeaderBtn}
+							activeOpacity={0.8}
+							onPress={() => router.push("/qr-scanner")}
+						>
+							<Feather name="maximize" size={17} color={colors.primary} />
+							<Text style={styles.scanHeaderBtnText}>Scan QR</Text>
+						</TouchableOpacity>
 					</View>
 
 					{/* New Print Job Card */}
@@ -180,6 +220,8 @@ const HomePage = () => {
 							</View>
 						</View>
 					</TouchableOpacity>
+
+
 				</View>
 
 				<View style={styles.listsWrapper}>
@@ -277,9 +319,32 @@ const styles = StyleSheet.create({
 		width: "100%",
 		gap: 16,
 	},
-	welcomeContainer: {
+	welcomeRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
 		paddingHorizontal: 4,
 	},
+	welcomeContainer: {
+		flex: 1,
+	},
+	scanHeaderBtn: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		backgroundColor: "rgba(0, 217, 163, 0.12)",
+		paddingVertical: 8,
+		paddingHorizontal: 14,
+		borderRadius: 20,
+		borderWidth: 1,
+		borderColor: "rgba(0, 217, 163, 0.3)",
+	},
+	scanHeaderBtnText: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: colors.primary,
+	},
+
 	welcomeGreeting: {
 		fontSize: 15,
 		fontWeight: "500",
