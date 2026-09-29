@@ -222,22 +222,6 @@ const PrintSettings = () => {
 		setCurrentSegmentIndex((prev) => (prev >= index && prev > 0 ? prev - 1 : prev));
 	};
 
-	// Copies the current document's segments (page ranges + settings) onto every
-	// document, so identical assignments only need configuring once.
-	const handleCopyToAll = () => {
-		if (numberOfDocuments <= 1) return;
-		showAlert("Apply to all documents", `Apply these settings to all ${numberOfDocuments} documents? This replaces their current settings.`, [
-			{ text: "Cancel", style: "cancel" },
-			{
-				text: "Apply",
-				onPress: () => {
-					const template = currentSegments.map((s) => ({ ...s }));
-					setAllSegments(Array.from({ length: numberOfDocuments }, () => template.map((s) => ({ ...s }))));
-				},
-			},
-		]);
-	};
-
 	const isLastDocument = currentDocIndex >= numberOfDocuments - 1;
 
 	const handleProceedToNext = () => {
@@ -434,8 +418,6 @@ const PrintSettings = () => {
 					onAddSegment={handleAddSegment}
 					onRemoveSegment={handleRemoveSegment}
 					isSplit={isSplit}
-					showCopyToAll={numberOfDocuments > 1}
-					onCopyToAll={handleCopyToAll}
 					onContinue={isLastDocument ? handleContinue : handleProceedToNext}
 					continueText={isLastDocument ? "Review and continue" : "Proceed to next document"}
 					loading={submitting}

@@ -20,6 +20,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import config from "../config/config";
 import { colors } from "../constants/colors";
 import { showAlert } from "../utils/alert";
+import { uploadFile } from "../utils/fileUpload";
 import { getItemAsync } from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
@@ -124,7 +125,7 @@ const TopUpPage = () => {
 		}
 	};
 
-	// Upload payment proof via /api/files, then attach it to the draft
+	// Upload payment proof to /api/files over tus, then attach it to the draft
 	const handleUploadProof = async () => {
 		if (!pickedImage) {
 			showAlert("No image selected", "Please choose a payment screenshot to upload.");
@@ -137,38 +138,22 @@ const TopUpPage = () => {
 		try {
 			setUploading(true);
 			const token = await getItemAsync("authToken");
-			const formData = new FormData();
+			const mimeType = pickedImage.mimeType || "image/jpeg";
+			// The backend needs the extension in the name. Web picks give a
+			// data:/blob: uri, so fall back to the mime subtype there.
+			const uriExt = pickedImage.uri.split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1];
 			const fileName =
-				pickedImage.fileName ||
-				`payment-proof.${(pickedImage.uri.split(".").pop() || "jpg").split("?")[0]}`;
+				pickedImage.fileName || `payment-proof.${uriExt || mimeType.split("/")[1] || "jpg"}`;
 
+			let source;
 			if (Platform.OS === "web") {
-				let filePart = pickedImage.file;
-				if (!filePart) {
-					const res = await fetch(pickedImage.uri);
-					filePart = await res.blob();
-				}
-				formData.append("file", filePart, fileName);
+				source = pickedImage.file || (await (await fetch(pickedImage.uri)).blob());
 			} else {
-				formData.append("file", {
-					uri: pickedImage.uri,
-					name: fileName,
-					type: pickedImage.mimeType || "image/jpeg",
-				});
-			}
-			formData.append("convert", "false");
-
-			const response = await fetch(`${API_BASE_URL}/files`, {
-				method: "POST",
-				headers: { Authorization: `Bearer ${token}` },
-				body: formData,
-			});
-			const body = await response.json();
-			if (!response.ok || !body.success) {
-				throw new Error(body.message || "Failed to upload payment proof.");
+				source = { uri: pickedImage.uri, name: fileName, type: mimeType };
 			}
 
-			const fileRecord = body.data?.file || body.data;
+			const { promise } = uploadFile(source, { name: fileName, mimeType, token });
+			const fileRecord = await promise;
 
 			// Attach the proof to the draft right away via /api/drafts/:draftId
 			const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {

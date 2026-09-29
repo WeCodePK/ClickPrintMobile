@@ -101,8 +101,6 @@ const DocumentSettingsForm = ({
 	onAddSegment,
 	onRemoveSegment,
 	isSplit = false,
-	showCopyToAll = false,
-	onCopyToAll,
 	onContinue,
 	continueText,
 	loading,
@@ -486,14 +484,6 @@ const DocumentSettingsForm = ({
 				style={[styles.footer, { paddingBottom: insets.bottom, bottom: keyboardOffset }]}
 				onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
 			>
-				{/* Power action, demoted to a subtle ghost link */}
-				{showCopyToAll && (
-					<TouchableOpacity style={styles.copyAllButton} onPress={onCopyToAll} disabled={isActionDisabled()}>
-						<Feather name="copy" size={16} color={colors.textSecondary} />
-						<Text style={styles.copyAllText}>Apply these settings to all documents</Text>
-					</TouchableOpacity>
-				)}
-
 				{/* Single primary action */}
 				<TouchableOpacity
 					style={[styles.submitButton, isActionDisabled() && styles.submitButtonDisabled]}
@@ -800,18 +790,6 @@ const styles = StyleSheet.create({
 		borderRadius: 12,
 		gap: 8,
 		marginBottom: 10,
-	},
-	copyAllButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 8,
-		paddingVertical: 10,
-	},
-	copyAllText: {
-		fontSize: 14,
-		fontWeight: "600",
-		color: colors.textSecondary,
 	},
 	submitButtonDisabled: {
 		backgroundColor: colors.navInactive,
