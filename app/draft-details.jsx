@@ -97,9 +97,10 @@ const DraftDetails = () => {
 				});
 				if (response.ok) {
 					const data = await response.json();
-					if (data.success && data.data) {
-						setShopName(data.data.name);
-						setCodLimit(typeof data.data.codLimit === "number" ? data.data.codLimit : null);
+					const shop = data.data?.shop;
+					if (data.success && shop) {
+						setShopName(shop.name);
+						setCodLimit(typeof shop.codLimit === "number" ? shop.codLimit : null);
 					}
 				}
 			} catch (error) {
