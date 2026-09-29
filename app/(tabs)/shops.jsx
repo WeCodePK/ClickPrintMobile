@@ -165,6 +165,14 @@ const ShopsPage = () => {
 										</TouchableOpacity>
 									)}
 								</View>
+								<TouchableOpacity
+									style={styles.scanQrBtn}
+									onPress={() => router.push("/qr-scanner")}
+									activeOpacity={0.8}
+									accessibilityLabel="Scan shop QR code"
+								>
+									<Feather name="maximize" size={20} color={colors.primary} />
+								</TouchableOpacity>
 							</View>
 
 							<ScrollView
@@ -199,6 +207,14 @@ const ShopsPage = () => {
 					)}
 
 					<ViewToggle mode={viewMode} onChange={setViewMode} />
+					<TouchableOpacity
+						style={styles.floatingScanMapButton}
+						onPress={() => router.push("/qr-scanner")}
+						activeOpacity={0.85}
+						accessibilityLabel="Scan shop QR code"
+					>
+						<Feather name="maximize" size={20} color={colors.cardBackground} />
+					</TouchableOpacity>
 				</View>
 			)}
 		</SafeAreaView>
@@ -383,8 +399,12 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 		paddingBottom: 12,
 		backgroundColor: colors.background,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
 	},
 	searchBar: {
+		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
@@ -394,6 +414,38 @@ const styles = StyleSheet.create({
 		borderRadius: 12,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
+	},
+	scanQrBtn: {
+		width: 44,
+		height: 44,
+		borderRadius: 12,
+		backgroundColor: colors.cardBackground,
+		borderWidth: 1,
+		borderColor: colors.borderLight,
+		alignItems: "center",
+		justifyContent: "center",
+		shadowColor: colors.shadowLight || "#000",
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.08,
+		shadowRadius: 6,
+		elevation: 2,
+	},
+	floatingScanMapButton: {
+		position: "absolute",
+		top: 14,
+		right: 16,
+		width: 44,
+		height: 44,
+		borderRadius: 22,
+		backgroundColor: colors.primary,
+		alignItems: "center",
+		justifyContent: "center",
+		shadowColor: colors.shadowMedium,
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.35,
+		shadowRadius: 8,
+		elevation: 4,
+		zIndex: 10,
 	},
 	searchInput: {
 		flex: 1,
