@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
 		borderColor: colors.borderLight,
 	},
 	buttonDestructive: {
-		backgroundColor: colors.danger,
+		backgroundColor: colors.dangerDark,
 	},
 	buttonPressed: {
 		opacity: 0.75,

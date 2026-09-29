@@ -3,6 +3,7 @@ import * as SystemUI from "expo-system-ui";
 import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "../context/auth";
 import { colors } from "../constants/colors";
 import WebInstallGate from "../components/WebInstallGate";
@@ -71,7 +72,7 @@ function RootNavigation() {
 
 export default function RootLayout() {
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <WebInstallGate>
         <AuthProvider>
           <RootNavigation />
@@ -81,6 +82,6 @@ export default function RootLayout() {
       {/* Outside the gate so updates also apply on the install page, and
           mounted last so its updating screen sits above alerts. */}
       <ServiceWorkerUpdater />
-    </>
+    </GestureHandlerRootView>
   );
 }

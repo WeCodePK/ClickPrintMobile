@@ -32,7 +32,7 @@ export const colors = {
 	cardOverlayHover: "rgba(255, 255, 255, 0.3)",
 
 	// Navigation
-	navActive: "#FF8B7B",
+	navActive: "#00D9A3",
 	navInactive: "#858b96",
 
 	// Shadow Colors

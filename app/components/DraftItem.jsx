@@ -1,5 +1,7 @@
 import { Feather } from "@expo/vector-icons";
+import { useRef } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { colors } from "../../constants/colors";
 import { formatDate } from "../../utils/helper";
 
@@ -13,6 +15,7 @@ const summarize = (files, key, format) => {
 };
 
 const DraftItem = ({ draft, onPress, onDelete }) => {
+	const swipeableRef = useRef(null);
 	const files = draft.files || [];
 	const fileCount = files.length;
 	const total = draft.cost?.total || 0;
@@ -32,93 +35,105 @@ const DraftItem = ({ draft, onPress, onDelete }) => {
 	const sizeLabel = summarize(configuredFiles, "pageType", (v) => v);
 	const settingsLabel = [colorLabel, sizeLabel].filter(Boolean).join(" · ");
 
+	// A full swipe left asks to delete; the row snaps shut first, so backing out
+	// of the confirmation leaves the card in place.
+	const renderDeleteAction = () => (
+		<View style={styles.deleteAction}>
+			<Feather name="trash-2" size={20} color="#fff" />
+		</View>
+	);
+
+	const handleSwipeOpen = () => {
+		swipeableRef.current?.close();
+		onDelete(draft._id);
+	};
+
 	return (
-		<View style={styles.draftCard}>
-			<TouchableOpacity style={styles.draftTouchable} onPress={onPress} activeOpacity={0.7}>
-				<View style={styles.draftIcon}>
-					<Feather name="file-text" size={18} color={colors.printRequest} />
-				</View>
-
-				<View style={styles.draftInfo}>
-					{/* Name + cost */}
-					<View style={styles.titleRow}>
-						<Text style={styles.draftName} numberOfLines={1}>
-							{primaryName}
-							{extraCount > 0 && <Text style={styles.draftNameExtra}>  +{extraCount} more</Text>}
-						</Text>
-						{total > 0 && <Text style={styles.draftCost}>Rs. {total}</Text>}
+		<ReanimatedSwipeable
+			ref={swipeableRef}
+			enabled={!!onDelete}
+			renderRightActions={renderDeleteAction}
+			onSwipeableOpen={handleSwipeOpen}
+			rightThreshold={32}
+			friction={2}
+			overshootRight={false}
+		>
+			<View style={styles.draftCard}>
+				<TouchableOpacity style={styles.draftTouchable} onPress={onPress} activeOpacity={0.7}>
+					<View style={styles.draftIcon}>
+						<Feather name="file-text" size={18} color={colors.printRequest} />
 					</View>
 
-					{/* Meta line */}
-					<View style={styles.draftDetails}>
-						{draft.createdAt && (
-							<>
-								<Text style={styles.draftMeta}>{formatDate(draft.createdAt)}</Text>
-								<Text style={styles.draftDot}>•</Text>
-							</>
-						)}
-						<Text style={styles.draftMeta}>
-							{fileCount} file{fileCount !== 1 ? "s" : ""}
-						</Text>
-						{totalPages > 0 && (
-							<>
-								<Text style={styles.draftDot}>•</Text>
-								<Text style={styles.draftMeta}>
-									{totalPages} page{totalPages !== 1 ? "s" : ""}
-								</Text>
-							</>
-						)}
-					</View>
-
-					{/* Chips */}
-					<View style={styles.chipsRow}>
-						<View style={[styles.pill, isReady ? styles.pillReady : styles.pillPending]}>
-							{isReady ? (
-								<Feather name="check-circle" size={11} color={colors.primaryDark} />
-							) : (
-								<Feather name="alert-circle" size={11} color={colors.printRequestDark} />
-							)}
-							<Text style={[styles.pillText, isReady ? styles.pillTextReady : styles.pillTextPending]}>{stage}</Text>
+					<View style={styles.draftInfo}>
+						{/* Name + cost */}
+						<View style={styles.titleRow}>
+							<Text style={styles.draftName} numberOfLines={1}>
+								{primaryName}
+								{extraCount > 0 && <Text style={styles.draftNameExtra}>  +{extraCount} more</Text>}
+							</Text>
+							{total > 0 && <Text style={styles.draftCost}>Rs. {total}</Text>}
 						</View>
 
-						{shopName && (
-							<View style={styles.infoChip}>
-								<Feather name="map-pin" size={11} color={colors.textSecondary} />
-								<Text style={styles.infoChipText} numberOfLines={1}>
-									{shopName}
-								</Text>
-							</View>
-						)}
+						{/* Meta line */}
+						<View style={styles.draftDetails}>
+							{draft.createdAt && (
+								<>
+									<Text style={styles.draftMeta}>{formatDate(draft.createdAt)}</Text>
+									<Text style={styles.draftDot}>•</Text>
+								</>
+							)}
+							<Text style={styles.draftMeta}>
+								{fileCount} file{fileCount !== 1 ? "s" : ""}
+							</Text>
+							{totalPages > 0 && (
+								<>
+									<Text style={styles.draftDot}>•</Text>
+									<Text style={styles.draftMeta}>
+										{totalPages} page{totalPages !== 1 ? "s" : ""}
+									</Text>
+								</>
+							)}
+						</View>
 
-						{settingsLabel !== "" && (
-							<View style={styles.infoChip}>
-								<Feather name="sliders" size={11} color={colors.textSecondary} />
-								<Text style={styles.infoChipText}>{settingsLabel}</Text>
+						{/* Chips */}
+						<View style={styles.chipsRow}>
+							<View style={[styles.pill, isReady ? styles.pillReady : styles.pillPending]}>
+								{isReady ? (
+									<Feather name="check-circle" size={11} color={colors.primaryDark} />
+								) : (
+									<Feather name="alert-circle" size={11} color={colors.printRequestDark} />
+								)}
+								<Text style={[styles.pillText, isReady ? styles.pillTextReady : styles.pillTextPending]}>{stage}</Text>
 							</View>
-						)}
+
+							{shopName && (
+								<View style={styles.infoChip}>
+									<Feather name="map-pin" size={11} color={colors.textSecondary} />
+									<Text style={styles.infoChipText} numberOfLines={1}>
+										{shopName}
+									</Text>
+								</View>
+							)}
+
+							{settingsLabel !== "" && (
+								<View style={styles.infoChip}>
+									<Feather name="sliders" size={11} color={colors.textSecondary} />
+									<Text style={styles.infoChipText}>{settingsLabel}</Text>
+								</View>
+							)}
+						</View>
 					</View>
-				</View>
-			</TouchableOpacity>
-
-			{onDelete && (
-				<TouchableOpacity
-					onPress={() => onDelete(draft._id)}
-					hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-					style={styles.deleteButton}
-				>
-					<Feather name="trash-2" size={16} color={colors.printRequest} />
 				</TouchableOpacity>
-			)}
-		</View>
+			</View>
+		</ReanimatedSwipeable>
 	);
 };
 
 const styles = StyleSheet.create({
 	draftCard: {
-		backgroundColor: "transparent",
+		backgroundColor: colors.cardBackground,
 		paddingVertical: 12,
-		paddingLeft: 16,
-		paddingRight: 8,
+		paddingHorizontal: 16,
 		flexDirection: "row",
 		alignItems: "center",
 		borderBottomWidth: 1,
@@ -227,11 +242,11 @@ const styles = StyleSheet.create({
 		fontWeight: "500",
 		color: colors.textSecondary,
 	},
-	deleteButton: {
-		padding: 10,
-		marginLeft: 8,
-		borderRadius: 10,
-		backgroundColor: "rgba(255, 139, 123, 0.12)",
+	deleteAction: {
+		width: 64,
+		backgroundColor: colors.dangerDark,
+		justifyContent: "center",
+		alignItems: "center",
 	},
 });
 

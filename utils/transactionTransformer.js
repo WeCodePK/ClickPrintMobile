@@ -2,8 +2,10 @@ const transformTransaction = (t) => {
 	const date = new Date(t.createdAt);
 	return {
 		id: t._id,
+		code: t.code,
 		status: t.status,
 		shopId: t.shop?._id || t.shop,
+		shopName: t.shop?.name,
 		timestamp: t.createdAt,
 		date: date.toISOString().split("T")[0],
 		time: date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),

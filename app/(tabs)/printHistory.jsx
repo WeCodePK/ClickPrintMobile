@@ -4,8 +4,9 @@ import { Feather } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import PullToRefreshScrollView from "../../components/PullToRefreshScrollView";
 import { colors } from "../../constants/colors";
 import { useTransactions } from "../../hooks/useTransactions";
 import { formatDate } from "../../utils/helper";
@@ -128,9 +129,6 @@ const PrintHistory = () => {
 		return (
 			<SafeAreaView style={styles.container} edges={["top"]}>
 				<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-				<View style={styles.header}>
-					<Text style={styles.headerTitle}>Print History</Text>
-				</View>
 				<View style={styles.loadingContainer}>
 					<ActivityIndicator size="large" color={colors.primary} />
 					<Text style={styles.loadingText}>Loading transactions...</Text>
@@ -143,9 +141,6 @@ const PrintHistory = () => {
 		return (
 			<SafeAreaView style={styles.container} edges={["top"]}>
 				<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-				<View style={styles.header}>
-					<Text style={styles.headerTitle}>Print History</Text>
-				</View>
 				<View style={styles.errorContainer}>
 					<Feather name="alert-circle" size={48} color={colors.expense} />
 					<Text style={styles.errorText}>{error}</Text>
@@ -162,10 +157,6 @@ const PrintHistory = () => {
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-
-			<View style={styles.header}>
-				<Text style={styles.headerTitle}>Print History</Text>
-			</View>
 
 			{/* Filter and Sort Bar */}
 			<View style={styles.filterBar}>
@@ -200,18 +191,12 @@ const PrintHistory = () => {
 			</View>
 
 			{/* Scrollable list */}
-			<ScrollView
+			<PullToRefreshScrollView
 				style={styles.scrollView}
 				contentContainerStyle={styles.scrollContent}
 				showsVerticalScrollIndicator={false}
-				refreshControl={
-					<RefreshControl
-						refreshing={refreshing}
-						onRefresh={refresh}
-						colors={[colors.primary]}
-						tintColor={colors.primary}
-					/>
-				}
+				refreshing={refreshing}
+				onRefresh={refresh}
 			>
 				{filteredAndSortedTransactions.length === 0 ? (
 					<View style={styles.emptyContainer}>
@@ -226,7 +211,7 @@ const PrintHistory = () => {
 						}
 					/>
 				)}
-			</ScrollView>
+			</PullToRefreshScrollView>
 
 			{/* Filter Modal */}
 			<Modal visible={filterModalVisible} animationType="slide" transparent={true} onRequestClose={() => setFilterModalVisible(false)}>
@@ -442,21 +427,6 @@ const styles = StyleSheet.create({
 	container: {
 		flex: 1,
 		backgroundColor: colors.background,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		paddingHorizontal: 20,
-		paddingVertical: 16,
-		backgroundColor: colors.cardBackground,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
-	},
-	headerTitle: {
-		fontSize: 18,
-		fontWeight: "700",
-		color: colors.textPrimary,
 	},
 	filterBar: {
 		flexDirection: "row",

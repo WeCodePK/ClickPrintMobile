@@ -3,8 +3,9 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { Dimensions, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Dimensions, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import PullToRefreshScrollView from "../../components/PullToRefreshScrollView";
 import config from "../../config/config";
 import { colors } from "../../constants/colors";
 import { useAuth } from "../../context/auth";
@@ -25,7 +26,7 @@ const API_BASE_URL = config.apiBaseUrl;
 const HomePage = () => {
 	const router = useRouter();
 	const { drafts, loading, error, refresh, refreshing, reload } = useDrafts();
-	const { activeJobs, loading: loadingJobs, refresh: refreshJobs, reload: reloadJobs } = useActiveJobs();
+	const { activeJobs, loading: loadingJobs, refreshing: refreshingJobs, refresh: refreshJobs, reload: reloadJobs } = useActiveJobs();
 	const [userName, setUserName] = useState("");
 	const { signOut } = useAuth();
 
@@ -91,6 +92,42 @@ const HomePage = () => {
 			}
 		})();
 	}, [router]);
+
+	const handleCancelJob = useCallback((job) => {
+		showAlert(
+			job.code ? `Cancel Job #${job.code}?` : "Cancel Job?",
+			"Are you sure you want to cancel this job?",
+			[
+				{ text: "No", style: "cancel" },
+				{
+					text: "Cancel",
+					style: "destructive",
+					onPress: async () => {
+						try {
+							const token = await SecureStore.getItemAsync("authToken");
+							const response = await fetch(`${API_BASE_URL}/jobs/${job.id}/status`, {
+								method: "PATCH",
+								headers: {
+									"Content-Type": "application/json",
+									Authorization: `Bearer ${token}`,
+								},
+								body: JSON.stringify({ status: "cancelled" }),
+							});
+							const data = await response.json();
+							if (response.ok && data.success !== false) {
+								reloadJobs();
+							} else {
+								showAlert("Error", data.message || "Failed to cancel the job.");
+							}
+						} catch (err) {
+							console.error("Error cancelling job:", err);
+							showAlert("Error", "Something went wrong. Please try again.");
+						}
+					},
+				},
+			]
+		);
+	}, [reloadJobs]);
 
 	const handleDeleteDraft = useCallback((draftId) => {
 		showAlert(
@@ -172,11 +209,12 @@ const HomePage = () => {
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-			<ScrollView
+			<PullToRefreshScrollView
 				style={styles.scrollView}
 				contentContainerStyle={styles.scrollContent}
 				showsVerticalScrollIndicator={false}
-				refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} />}
+				refreshing={refreshing || refreshingJobs}
+				onRefresh={refreshAll}
 			>
 				<View style={styles.topCardsContainer}>
 					{/* Welcome Message + Scan Button */}
@@ -225,11 +263,32 @@ const HomePage = () => {
 				</View>
 
 				<View style={styles.listsWrapper}>
-					{/* User Drafts */}
+					{/* Active Jobs */}
+					{!loadingJobs && activeJobs.length > 0 && (
+						<View style={styles.listCard}>
+							<View style={styles.sectionHeader}>
+								<Text style={styles.sectionTitle}>Active Jobs</Text>
+							</View>
+							<View style={styles.innerListContainer}>
+								{activeJobs.map((job, index) => (
+									<ActiveJobCard
+										key={job.id}
+										job={job}
+										isLast={index === activeJobs.length - 1}
+										onCancel={handleCancelJob}
+										onPress={() => router.push({ pathname: "/job-details", params: { transaction: JSON.stringify(job) } })}
+									/>
+								))}
+							</View>
+						</View>
+					)}
+
+					{/* User Drafts — shown when there are drafts, or as the empty state when
+					    there are no active jobs either, so the page is never blank. */}
 					{!loading && (drafts.length > 0 || (!loadingJobs && activeJobs.length === 0)) && (
 						<View style={styles.listCard}>
-							<View style={styles.historyHeader}>
-								<Text style={styles.historyTitle}>My Drafts</Text>
+							<View style={styles.sectionHeader}>
+								<Text style={styles.sectionTitle}>My Drafts</Text>
 							</View>
 							{drafts.length > 0 ? (
 								<View>
@@ -250,26 +309,8 @@ const HomePage = () => {
 							)}
 						</View>
 					)}
-
-					{/* Active Jobs */}
-					{!loadingJobs && activeJobs.length > 0 && (
-						<View style={styles.listCard}>
-							<View style={styles.activeJobsHeader}>
-								<Text style={styles.activeJobsTitle}>Active Jobs</Text>
-							</View>
-							<View style={styles.innerListContainer}>
-								{activeJobs.map((job) => (
-									<ActiveJobCard
-										key={job.id}
-										job={job}
-										onPress={() => router.push({ pathname: "/job-details", params: { transaction: JSON.stringify(job) } })}
-									/>
-								))}
-							</View>
-						</View>
-					)}
 				</View>
-			</ScrollView>
+			</PullToRefreshScrollView>
 		</SafeAreaView>
 	);
 };
@@ -421,17 +462,6 @@ const styles = StyleSheet.create({
 		borderRadius: 24,
 		padding: 20,
 	},
-	historyHeader: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		marginBottom: 20,
-	},
-	historyTitle: {
-		fontSize: 20,
-		fontWeight: "700",
-		color: colors.textPrimary,
-	},
 	loadingContainer: {
 		paddingVertical: 40,
 		justifyContent: "center",
@@ -448,13 +478,13 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 	},
 
-	activeJobsHeader: {
+	sectionHeader: {
 		flexDirection: "row",
 		alignItems: "center",
 		marginBottom: 12,
 		gap: 8,
 	},
-	activeJobsTitle: {
+	sectionTitle: {
 		fontSize: 18,
 		fontWeight: "700",
 		color: colors.textPrimary,
