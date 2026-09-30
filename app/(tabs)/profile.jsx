@@ -1,15 +1,14 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
-import { useRouter, useNavigation } from "expo-router";
-import SecureStore from "../../utils/storage";
+import { useNavigation, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
+import { Animated, Linking, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { showAlert } from "../../utils/alert";
-import config from "../../config/config";
 import { colors } from "../../constants/colors";
 import { useAuth } from "../../context/auth";
+import { showAlert } from "../../utils/alert";
+import SecureStore from "../../utils/storage";
 
 
 
@@ -91,13 +90,14 @@ const Profile = () => {
 	};
 
 	const handleLogout = () => {
-		showAlert("Logout", "Are you sure you want to logout?", [
+		showAlert("Logout?", "Are you sure you want to logout?", [
 			{
 				text: "Cancel",
 				style: "cancel",
 			},
 			{
 				text: "Logout",
+				style: "destructive",
 				onPress: performLogout,
 			},
 		]);
@@ -174,10 +174,8 @@ const Profile = () => {
 
 				</View>
 
-				{/* Footer: build number + logout, kept together at the bottom */}
+				{/* Footer: logout, kept at the bottom */}
 				<View style={styles.footer}>
-					<Text style={styles.buildNumber}>Build Number: {config.buildNumber}</Text>
-
 					{/* Logout Button */}
 					<TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
 						<Feather name="log-out" size={20} color={colors.cardBackground} />
@@ -249,13 +247,6 @@ const styles = StyleSheet.create({
 	footer: {
 		marginTop: 12,
 	},
-	buildNumber: {
-		fontSize: 13,
-		fontWeight: "500",
-		color: colors.textSecondary,
-		textAlign: "center",
-		marginBottom: 10,
-	},
 	logoutButton: {
 		flexDirection: "row",
 		alignItems: "center",
@@ -263,7 +254,7 @@ const styles = StyleSheet.create({
 		gap: 8,
 		marginHorizontal: 20,
 		paddingVertical: 14,
-		backgroundColor: colors.printRequest,
+		backgroundColor: colors.dangerDark,
 		borderRadius: 12,
 	},
 	logoutButtonText: {

@@ -3,8 +3,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import appLogo from "../assets/icon.png";
 import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
 import { colors } from "../constants/colors";
@@ -24,6 +25,7 @@ const Login = () => {
 	const [phone, setPhone] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [keyboardOffset, setKeyboardOffset] = useState(0);
+	const [phoneFocused, setPhoneFocused] = useState(false);
 
 	useEffect(() => {
 		if (Platform.OS === "web") {
@@ -131,9 +133,19 @@ const Login = () => {
 	return (
 		<View style={{ flex: 1, backgroundColor: colors.background }}>
 			<DismissKeyboard>
-				<SafeAreaView style={[styles.container, { paddingBottom: keyboardOffset }]}>
+				{/* Keep the same bottom gap with the keyboard closed as the keyboard's extra offset
+				    gives when it's open, so the button doesn't sit lower before the first focus. */}
+				<SafeAreaView style={[styles.container, { paddingBottom: keyboardOffset || KEYBOARD_EXTRA_OFFSET }]}>
+					{/* Logo + two-tone wordmark, as on ClickPrintDesktop's login screen */}
+					<View style={styles.brandRow}>
+						<Image source={appLogo} style={styles.logo} resizeMode="contain" />
+						<Text style={styles.brandText}>
+							Click<Text style={styles.brandTextAccent}>Print</Text>
+						</Text>
+					</View>
+
 					<Text style={styles.heading}>Let&apos;s get started!</Text>
-					<Text style={styles.subHeading}>Please enter your mobile number</Text>
+					<Text style={styles.subHeading}>Please enter your mobile number to receive a verification code</Text>
 
 					<View style={styles.phoneRow}>
 
@@ -142,7 +154,7 @@ const Login = () => {
 						</View>
 
 
-						<View style={styles.phoneBox}>
+						<View style={[styles.phoneBox, phoneFocused && styles.phoneBoxFocused]}>
 							<TextInput
 								style={styles.input}
 								placeholder="3012345678"
@@ -150,6 +162,8 @@ const Login = () => {
 								keyboardType="number-pad"
 								value={phone}
 								onChangeText={handlePhoneChange}
+								onFocus={() => setPhoneFocused(true)}
+								onBlur={() => setPhoneFocused(false)}
 								maxLength={10}
 							/>
 						</View>
@@ -185,57 +199,85 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		marginBottom: 10,
 	},
-	heading: {
-		fontSize: 28,
+	brandRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		marginTop: 60,
+		marginBottom: 40,
+	},
+	logo: {
+		width: 42,
+		height: 42,
+		borderRadius: 8,
+	},
+	brandText: {
+		fontSize: 18,
+		fontWeight: "800",
+		letterSpacing: -0.3,
 		color: colors.textPrimary,
-		fontWeight: "bold",
-		marginBottom: 10,
-		marginTop: 100,
-		marginLeft: 5,
+	},
+	brandTextAccent: {
+		color: colors.primary,
+	},
+	heading: {
+		fontSize: 26,
+		lineHeight: 32,
+		fontWeight: "800",
+		color: colors.textPrimary,
+		marginBottom: 6,
 	},
 	subHeading: {
-		fontSize: 16,
-		color: colors.textPrimary,
-		marginBottom: 40,
-		marginTop: 5,
-		marginLeft: 5,
+		fontSize: 15,
+		lineHeight: 22,
+		color: colors.textSecondary,
+		marginBottom: 36,
 	},
 
-
+	// Squarish 48px fields, matching ClickPrintDesktop's .country-code / .phone-input.
 	phoneRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		marginBottom: 30,
+		gap: 10,
+		marginBottom: 24,
 	},
 
 	countryBox: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "rgb(236, 228, 228)",
+		backgroundColor: "#E5E7EB",
 		paddingHorizontal: 14,
-		height: 40,
-		borderRadius: 25,
-		marginRight: 10,
+		height: 48,
+		borderRadius: 12,
+		borderWidth: 2,
+		borderColor: "transparent",
 	},
 
 	phoneBox: {
 		flex: 1,
-		backgroundColor: "rgb(236, 228, 228)",
-		height: 40,
-		borderRadius: 25,
-		paddingHorizontal: 10,
+		backgroundColor: "#E5E7EB",
+		height: 48,
+		borderRadius: 12,
+		borderWidth: 2,
+		borderColor: "transparent",
+		paddingHorizontal: 16,
 		justifyContent: "center",
+	},
+	phoneBoxFocused: {
+		backgroundColor: "#D1D5DB",
+		borderColor: colors.primary,
 	},
 
 	input: {
 		fontSize: 16,
-		color: "#000",
+		fontWeight: "500",
+		color: colors.textPrimary,
 		// Remove the browser's default focus outline on web (renders as a
 		// rectangle inside the pill-shaped input). No-op on native.
 		...Platform.select({ web: { outlineStyle: "none" } }),
 	},
 	countryCodeText: {
-		color: "#000",
+		color: colors.textPrimary,
 		fontSize: 14,
 		fontWeight: "500",
 	},
@@ -245,7 +287,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		backgroundColor: "#FF4F00",
 		paddingVertical: 15,
-		borderRadius: 10,
+		borderRadius: 12,
 		marginTop: "auto",
 		
 		
@@ -257,9 +299,9 @@ const styles = StyleSheet.create({
 
 	buttonText: {
 		color: "#fff",
-		fontSize: 16,
+		fontSize: 15,
 		marginRight: 10,
-		fontWeight: "bold",
+		fontWeight: "600",
 	},
 });
 

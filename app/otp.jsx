@@ -1,9 +1,9 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Keyboard, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { BackHandler, Keyboard, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
 import config from "../config/config";
@@ -216,6 +216,11 @@ const VerifyCode = () => {
 		}, [])
 	);
 
+	// "923235400291" → "+92 323 5400291": country code, carrier code, subscriber.
+	const formattedPhone = phoneNumber
+		? `+${phoneNumber.slice(0, 2)} ${phoneNumber.slice(2, 5)} ${phoneNumber.slice(5)}`
+		: "";
+
 	const formatTimer = (seconds) => {
 		const mins = Math.floor(seconds / 60);
 		const secs = seconds % 60;
@@ -228,13 +233,19 @@ const VerifyCode = () => {
 		<DismissKeyboard>
 		<SafeAreaView style={[styles.container, { paddingBottom: keyboardOffset }]}>
 			<TouchableOpacity style={styles.backButton} onPress={handleBack}>
-				<Ionicons name="arrow-back" size={24} />
+				<Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
+				<Text style={styles.backText}>Back</Text>
 			</TouchableOpacity>
 
 			<Text style={styles.title}>Enter verification code</Text>
 
+			{/* Same wording and SMS badge as ClickPrintDesktop's OTP screen */}
 			<View style={styles.instructionContainer}>
-				<Text style={styles.instructionText}>We&apos;ve sent it to +{phoneNumber} via SMS</Text>
+				<Text style={styles.instructionText}>We&apos;ve sent it to {formattedPhone} via</Text>
+				<View style={styles.smsBadge}>
+					<Feather name="message-square" size={16} color="#FF7F66" />
+					<Text style={styles.smsText}>SMS</Text>
+				</View>
 			</View>
 
 
@@ -259,15 +270,13 @@ const VerifyCode = () => {
 
 			<View style={styles.timerContainer}>
 				{timer > 0 ? (
-					<Text style={styles.timerText}>Resend available in {formatTimer(timer)}</Text>
+					<Text style={styles.timerText}>
+						Resend available in <Text style={styles.timerValue}>{formatTimer(timer)}</Text>
+					</Text>
 				) : (
 					<View style={styles.actionContainer}>
 						<TouchableOpacity onPress={handleResendCode} style={styles.resendButton} disabled={resending}>
-							{resending ? (
-								<ActivityIndicator color={colors.textPrimary} size="small" />
-							) : (
-								<Text style={styles.resendText}>Resend code</Text>
-							)}
+							<Text style={styles.resendText}>{resending ? "Sending..." : "Resend code"}</Text>
 						</TouchableOpacity>
 					</View>
 				)}
@@ -306,25 +315,47 @@ const styles = StyleSheet.create({
 		paddingTop: 20,
 	},
 	backButton: {
-		marginBottom: 30,
+		flexDirection: "row",
+		alignItems: "center",
+		alignSelf: "flex-start",
+		gap: 6,
+		paddingVertical: 6,
 		marginTop: 10,
+		marginBottom: 20,
+	},
+	backText: {
+		fontSize: 14,
+		fontWeight: "500",
+		color: colors.textSecondary,
 	},
 	title: {
-		fontSize: 32,
+		fontSize: 26,
+		lineHeight: 32,
 		color: colors.textPrimary,
-		fontWeight: "bold",
-		marginBottom: 15,
+		fontWeight: "800",
+		marginBottom: 6,
 	},
 	instructionContainer: {
 		flexDirection: "row",
 		flexWrap: "wrap",
 		alignItems: "center",
-		marginBottom: 50,
+		gap: 6,
+		marginBottom: 40,
 	},
 	instructionText: {
-		fontSize: 16,
+		fontSize: 15,
+		lineHeight: 24,
+		color: colors.textSecondary,
+	},
+	smsBadge: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 5,
+	},
+	smsText: {
+		fontSize: 15,
+		fontWeight: "600",
 		color: colors.textPrimary,
-		marginRight: 5,
 	},
 	codeContainer: {
 		flexDirection: "row",
@@ -355,8 +386,13 @@ const styles = StyleSheet.create({
 	},
 	timerText: {
 		textAlign: "center",
-		fontSize: 16,
+		fontSize: 14,
+		fontWeight: "500",
 		color: colors.textSecondary,
+	},
+	timerValue: {
+		fontWeight: "700",
+		color: colors.textPrimary,
 	},
 	actionContainer: {
 		flexDirection: "row",
@@ -365,13 +401,13 @@ const styles = StyleSheet.create({
 		gap: 10,
 	},
 	resendButton: {
-		paddingVertical: 5,
+		paddingVertical: 8,
+		paddingHorizontal: 16,
 	},
 	resendText: {
-		fontSize: 16,
-		color: colors.textPrimary,
+		fontSize: 14,
+		color: "#FF4F00",
 		fontWeight: "600",
-		textDecorationLine: "underline",
 	},
 	errorModalOverlay: {
 		flex: 1,

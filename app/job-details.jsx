@@ -3,56 +3,68 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import PullToRefreshScrollView from "../components/PullToRefreshScrollView";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { fetchTransactions } from "../services/fetchTransactions";
 import showAlert from "../utils/alert";
 import SecureStore from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
+// TODO: placeholder until the backend sends a per-job estimate as `job.eta`.
+const PLACEHOLDER_ETA = "5 - 10 mins";
+
+const PROGRESS_STEPS = ["submitted", "queued", "printing", "completed"];
+
+// Where each non-step status sits on the progress bar.
+const PROGRESS_ALIASES = { pending: 0, processing: 2 };
+
+// Statuses that end the job: no time estimate, and the progress bar stops moving.
+const FINAL_STATUSES = ["completed", "cancelled", "failed"];
+
+// One fade out and back in of the current progress segment.
+const SEGMENT_PULSE_DURATION = 1200;
+
+// The estimate's glint, matching the home screen's active-job card: one sweep
+// per cycle, and each slice of the band's opacity, softest at the edges.
+const GLINT_DURATION = 1600;
+const GLINT_SLICES = [0.2, 0.5, 0.8, 0.5, 0.2];
+const GLINT_SLICE_WIDTH = 4;
+const GLINT_WIDTH = GLINT_SLICES.length * GLINT_SLICE_WIDTH;
+
 const STATUS_CONFIG = {
-	completed: { label: "Completed", color: colors.primary, bg: "rgba(0, 217, 163, 0.12)" },
-	submitted: { label: "Submitted", color: colors.creditWallet, bg: "rgba(59, 158, 255, 0.12)" },
-	processing: { label: "Processing", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
-	queued: { label: "Queued", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
-	printing: { label: "Printing", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
-	cancelled: { label: "Cancelled", color: colors.printRequest, bg: "rgba(255, 139, 123, 0.12)" },
-	pending: { label: "Pending", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)" },
+	completed: { label: "Completed", color: colors.primary, bg: "rgba(0, 217, 163, 0.12)", icon: "check" },
+	submitted: { label: "Submitted", color: colors.textSecondary, bg: "rgba(143, 155, 179, 0.12)", icon: "send" },
+	processing: { label: "Processing", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)", icon: "loader" },
+	queued: { label: "Queued", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)", icon: "clock" },
+	printing: { label: "Printing", color: colors.primary, bg: "rgba(0, 217, 163, 0.12)", icon: "printer" },
+	cancelled: { label: "Cancelled", color: colors.danger, bg: "rgba(255, 90, 95, 0.12)", icon: "x" },
+	failed: { label: "Failed", color: colors.danger, bg: "rgba(255, 90, 95, 0.12)", icon: "alert-triangle" },
+	pending: { label: "Pending", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.12)", icon: "clock" },
 };
 
-const SIDEDNESS_LABELS = {
-	none: "Single Sided",
-	long: "Double Sided (Long Edge)",
-	short: "Double Sided (Short Edge)",
+const DUPLEX_LABELS = {
+	long: "Long Edge",
+	short: "Short Edge",
 };
 
-const formatSettingValue = (key, value) => {
-	switch (key) {
-		case "color":
-			return value ? "Colored" : "Black & White";
-		case "sidedness":
-			return SIDEDNESS_LABELS[value] || value;
-		case "orientation":
-			return value.charAt(0).toUpperCase() + value.slice(1);
-		case "pageSelection":
-			return value ? value : "All Pages";
-		default:
-			return String(value);
-	}
-};
+const capitalize = (value) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : "—");
 
-const SETTING_LABELS = {
-	color: "Color",
-	pageType: "Page Size",
-	orientation: "Orientation",
-	pagesPerSheet: "Pages Per Sheet",
-	numberOfCopies: "Copies",
-	pageSelection: "Page Range",
-	sidedness: "Sidedness",
-};
+// Laid out row by row in a two-column grid, so each pair is [left column, right column].
+const SETTINGS_LAYOUT = [
+	{ label: "Size", format: (s) => s.pageType ?? "—" },
+	{ label: "Orientation", format: (s) => capitalize(s.orientation) },
+	{ label: "Color", format: (s) => (s.color ? "Colored" : "Black & White") },
+	{ label: "Copies", format: (s) => s.numberOfCopies ?? "—" },
+	{ label: "Pages", format: (s) => s.pageSelection || "All" },
+	{ label: "Pages/Sheet", format: (s) => s.pagesPerSheet ?? "—" },
+	{ label: "Sides", format: (s) => (s.sidedness && s.sidedness !== "none" ? "Double" : "Single") },
+	{ label: "Duplex", format: (s) => DUPLEX_LABELS[s.sidedness] ?? "—" },
+];
 
 const formatCurrency = (amount) => `Rs. ${amount ?? 0}`;
 
@@ -60,6 +72,7 @@ const formatCurrency = (amount) => `Rs. ${amount ?? 0}`;
 
 const TransactionDetails = () => {
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
 	const params = useLocalSearchParams();
 	const transaction = JSON.parse(params.transaction);
 
@@ -68,15 +81,26 @@ const TransactionDetails = () => {
 	const [cancelling, setCancelling] = useState(false);
 	const [jobStatus, setJobStatus] = useState(transaction.status);
 	const [job, setJob] = useState(null);
+	const [showMoreDetails, setShowMoreDetails] = useState(false);
+	const [refreshing, setRefreshing] = useState(false);
 
 	// Prefer freshly fetched job data, fall back to the list payload for instant render.
 	const files = job?.files ?? transaction.files ?? [];
-	const cost = job?.cost ?? null;
-	const createdBy = job?.createdBy ?? null;
+	const cost = job?.cost ?? transaction.costBreakdown ?? null;
 	const statusHistory = job?.statusHistory ?? transaction.statusHistory ?? [];
+	const jobCode = job?.code ?? transaction.code;
+	const hasCostBreakdown = !!cost && (cost.lines?.length > 0 || cost.extra?.length > 0);
+	const additionalComments = (job?.additionalComments ?? transaction.additionalComments ?? "").trim();
+	// The backend populates this as { _id, name }; the list data already holds just the id.
+	const paymentProofFile = job?.paymentProofFile?._id ?? job?.paymentProofFile ?? transaction.paymentProofFile ?? null;
+	const paymentProofName = job?.paymentProofFile?.name ?? transaction.paymentProofFileName ?? null;
+	// What the More details section has to show, so dividers only go between blocks that are there.
+	const hasComments = additionalComments.length > 0;
+	const hasProof = !!paymentProofFile;
+	const hasHistory = statusHistory.length > 0;
+	const eta = job?.eta ?? transaction.eta ?? PLACEHOLDER_ETA;
 	const fileCount = files.length;
 	const totalPages = files.reduce((sum, f) => sum + (f.file?.numberOfPages || 0), 0);
-	const totalCopies = files.reduce((sum, f) => sum + (f.settings?.numberOfCopies || 0), 0);
 	const totalCost = cost?.total ?? transaction.cost ?? 0;
 
 	const CANCELLABLE_STATUSES = ["submitted", "queued", "pending", "processing"];
@@ -89,12 +113,12 @@ const TransactionDetails = () => {
 
 	const handleCancelJob = () => {
 		showAlert(
-			"Cancel Job",
-			"Are you sure you want to cancel this print job?",
+			jobCode ? `Cancel Job #${jobCode}?` : "Cancel Job?",
+			"Are you sure you want to cancel this job?",
 			[
 				{ text: "No", style: "cancel" },
 				{
-					text: "Yes, Cancel",
+					text: "Cancel",
 					style: "destructive",
 					onPress: async () => {
 						try {
@@ -114,7 +138,6 @@ const TransactionDetails = () => {
 							const data = await res.json();
 							if (res.ok && data.success !== false) {
 								setJobStatus("cancelled");
-								showAlert("Job Cancelled", "Your print job has been cancelled.");
 							} else {
 								showAlert("Error", data.message || "Failed to cancel the job.");
 							}
@@ -152,27 +175,48 @@ const TransactionDetails = () => {
 		fetchShopName();
 	}, [transaction.shopId]);
 
-	useEffect(() => {
-		const fetchJob = async () => {
-			if (!transaction.id) return;
-			try {
-				const token = await SecureStore.getItemAsync("authToken");
-				const res = await fetch(`${config.apiBaseUrl}/jobs/${transaction.id}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				});
+	const fetchJob = useCallback(async () => {
+		if (!transaction.id) return;
+		try {
+			const token = await SecureStore.getItemAsync("authToken");
+			const res = await fetch(`${config.apiBaseUrl}/jobs/${transaction.id}`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+			let fetchedJob = null;
+			if (res.ok) {
 				const data = await res.json();
-				if (data.success && data.data?.job) {
-					const fetchedJob = data.data.job;
-					setJob(fetchedJob);
-					setJobStatus(fetchedJob.status);
-					if (fetchedJob.shop?.name) setShopName(fetchedJob.shop.name);
-				}
-			} catch (e) {
-				console.error("Error fetching job:", e);
+				fetchedJob = data.data?.job ?? null;
+			} else if (res.status === 404) {
+				// Once a job is completed, cancelled or failed the backend moves it out
+				// of Jobs into History (keeping its _id), so look for it there instead.
+				const history = await fetchTransactions();
+				fetchedJob = history.find((h) => h._id === transaction.id) ?? null;
 			}
-		};
-		fetchJob();
+			if (fetchedJob) {
+				setJob(fetchedJob);
+				setJobStatus(fetchedJob.status);
+				if (fetchedJob.shop?.name) setShopName(fetchedJob.shop.name);
+			}
+		} catch (e) {
+			console.error("Error fetching job:", e);
+		}
 	}, [transaction.id]);
+
+	// Finished jobs come from History with everything already filled in, so only
+	// jobs still in progress need fetching fresh.
+	useEffect(() => {
+		if (!FINAL_STATUSES.includes(transaction.status)) fetchJob();
+	}, [fetchJob, transaction.status]);
+
+	const handleRefresh = async () => {
+		setRefreshing(true);
+		await fetchJob();
+		setRefreshing(false);
+	};
+
+	// Only jobs still in progress can change, so finished ones don't get pull-to-refresh.
+	const isActive = !FINAL_STATUSES.includes(jobStatus);
+	const ScrollContainer = isActive ? PullToRefreshScrollView : ScrollView;
 
 	const formatDateTime = (isoString) => {
 		const date = new Date(isoString);
@@ -186,45 +230,6 @@ const TransactionDetails = () => {
 		});
 	};
 
-	const PROGRESS_STEPS = ["submitted", "queued", "printing", "completed"];
-
-	const renderProgressBar = (currentStatus) => {
-		const statusLower = currentStatus.toLowerCase();
-		if (statusLower === "cancelled") {
-			return (
-				<View style={styles.progressBarContainer}>
-					<View style={[styles.progressSegment, { backgroundColor: colors.printRequest, width: '100%' }]} />
-				</View>
-			);
-		}
-
-		let currentIndex = PROGRESS_STEPS.indexOf(statusLower);
-		if (currentIndex === -1) {
-			if (statusLower === "pending") currentIndex = 0;
-			else if (statusLower === "processing") currentIndex = 2;
-			else currentIndex = 0;
-		}
-
-		const activeColor = statusConfig.color || colors.primary;
-
-		return (
-			<View style={styles.progressBarContainer}>
-				{PROGRESS_STEPS.map((step, index) => {
-					const isCompleted = index <= currentIndex;
-					return (
-						<View
-							key={step}
-							style={[
-								styles.progressSegment,
-								{ backgroundColor: isCompleted ? activeColor : colors.borderLight }
-							]}
-						/>
-					);
-				})}
-			</View>
-		);
-	};
-
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
@@ -234,88 +239,75 @@ const TransactionDetails = () => {
 				<TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
 					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
 				</TouchableOpacity>
-				<Text style={styles.headerTitle}>Job Details</Text>
+				<Text style={styles.headerTitle}>{jobCode ? `Job #${jobCode}` : "Job Details"}</Text>
 				<View style={styles.placeholder} />
 			</View>
 
-			<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+			<ScrollContainer
+				style={styles.scrollView}
+				contentContainerStyle={styles.scrollContent}
+				{...(isActive && { refreshing, onRefresh: handleRefresh })}
+			>
 				{/* Summary Card */}
 				<View style={styles.summaryCard}>
-					<View style={styles.summaryIconContainer}>
+					<View style={styles.summaryTop}>
+						{FINAL_STATUSES.includes(jobStatus) ? (
+							<Text style={[styles.summaryFinal, { color: statusConfig.color }]}>{statusConfig.label}</Text>
+						) : (
+							<View style={styles.etaBlock}>
+								<Text style={styles.etaCaption}>Estimated time</Text>
+								<EtaGlint eta={eta} />
+							</View>
+						)}
+						<View style={styles.summaryBadges}>
+							{jobCode && <Text style={styles.jobCode}>#{jobCode}</Text>}
+							{!FINAL_STATUSES.includes(jobStatus) && (
+								<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
+									<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
+								</View>
+							)}
+						</View>
+					</View>
+
+					<JobProgress status={jobStatus} color={statusConfig.color} />
+
+					<View style={styles.summaryFooter}>
 						{shopImageUrl ? (
 							<Image source={{ uri: shopImageUrl }} style={styles.shopImage} contentFit="cover" transition={200} />
 						) : (
-							<Feather name="printer" size={32} color={colors.printRequest} />
+							<Feather name="map-pin" size={14} color={colors.textSecondary} />
 						)}
-					</View>
-					<Text style={styles.summaryTitle}>{shopName}</Text>
-					<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-						<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
-					</View>
-					<Text style={styles.summaryDate}>{formatDateTime(transaction.timestamp)}</Text>
-
-					{renderProgressBar(jobStatus)}
-				</View>
-
-				{/* Quick Stats */}
-				<View style={styles.statsRow}>
-					<View style={styles.statCard}>
-						<Text style={styles.statValue}>{fileCount}</Text>
-						<Text style={styles.statLabel}>File{fileCount !== 1 ? "s" : ""}</Text>
-					</View>
-					<View style={styles.statCard}>
-						<Text style={styles.statValue}>{totalPages}</Text>
-						<Text style={styles.statLabel}>Page{totalPages !== 1 ? "s" : ""}</Text>
-					</View>
-					<View style={styles.statCard}>
-						<Text style={styles.statValue}>{totalCopies}</Text>
-						<Text style={styles.statLabel}>{totalCopies !== 1 ? "Copies" : "Copy"}</Text>
-					</View>
-					<View style={styles.statCard}>
-						<Text style={[styles.statValue, { color: colors.printRequest }]}>{totalCost}</Text>
-						<Text style={styles.statLabel}>Rs. Total</Text>
-					</View>
-				</View>
-
-				{/* Job Info */}
-				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Feather name="info" size={18} color={colors.printRequest} />
-						<Text style={styles.sectionTitle}>Job Info</Text>
-					</View>
-					<View style={styles.card}>
-						<InfoRow label="Shop" value={shopName} />
-						{createdBy?.name && <InfoRow label="Ordered By" value={createdBy.name} />}
-						{createdBy?.number && <InfoRow label="Contact" value={createdBy.number} />}
-						<InfoRow label="Total Files" value={`${fileCount} file${fileCount !== 1 ? "s" : ""}`} />
-						<InfoRow label="Total Pages" value={`${totalPages}`} />
-						<InfoRow label="Total Copies" value={`${totalCopies}`} />
-						<InfoRow label="Job ID" value={transaction.id} mono />
+						<Text style={styles.summaryShop} numberOfLines={1}>
+							{shopName}
+							<Text style={styles.summaryFiles}>
+								{" "}· {fileCount} file{fileCount !== 1 ? "s" : ""} · {totalPages} page{totalPages !== 1 ? "s" : ""}
+							</Text>
+						</Text>
 					</View>
 				</View>
 
 				{/* Cost Breakdown */}
-				{cost && (cost.lines?.length > 0 || cost.extra?.length > 0) && (
+				{hasCostBreakdown && (
 					<View style={styles.section}>
 						<View style={styles.sectionHeader}>
-							<Feather name="dollar-sign" size={18} color={colors.printRequest} />
+							<Feather name="dollar-sign" size={18} color={colors.primary} />
 							<Text style={styles.sectionTitle}>Cost Breakdown</Text>
 						</View>
 						<View style={styles.card}>
 							{(cost.lines || []).map((line, index) => (
 								<View key={`line-${index}`} style={styles.costRow}>
-									<View style={styles.costRowLeft}>
-										<Text style={styles.costLabel}>{line.item}</Text>
-										<Text style={styles.costSubLabel}>{line.quantity} × {formatCurrency(line.rate)}</Text>
-									</View>
+									<Text style={styles.costLabel}>
+										{line.item}
+										<Text style={styles.costSubLabel}>
+											{"  "}({line.quantity} × {formatCurrency(line.rate)})
+										</Text>
+									</Text>
 									<Text style={styles.costValue}>{formatCurrency(line.subtotal)}</Text>
 								</View>
 							))}
 							{(cost.extra || []).map((extra, index) => (
 								<View key={`extra-${index}`} style={styles.costRow}>
-									<View style={styles.costRowLeft}>
-										<Text style={styles.costLabel}>{extra.item}</Text>
-									</View>
+									<Text style={styles.costLabel}>{extra.item}</Text>
 									<Text style={styles.costValue}>{formatCurrency(extra.subtotal)}</Text>
 								</View>
 							))}
@@ -327,76 +319,122 @@ const TransactionDetails = () => {
 					</View>
 				)}
 
-				{/* Files Section */}
+				{/* More Details — collapsed by default */}
 				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Feather name="file-text" size={18} color={colors.printRequest} />
-						<Text style={styles.sectionTitle}>Files ({fileCount})</Text>
-					</View>
-					{files.map((file, index) => {
-						const pages = file.file?.numberOfPages;
-						return (
-							<View key={file.file?._id ?? index} style={[styles.fileCard, index < files.length - 1 && styles.fileCardSpacing]}>
-								<View style={styles.fileCardHeader}>
-									<View style={styles.fileIcon}>
-										<Feather name="file" size={16} color={colors.printRequest} />
+					<TouchableOpacity
+						style={styles.moreDetailsToggle}
+						onPress={() => setShowMoreDetails((prev) => !prev)}
+						activeOpacity={0.7}
+					>
+						<Text style={styles.moreDetailsTitle}>More details</Text>
+						<Feather name={showMoreDetails ? "chevron-up" : "chevron-down"} size={20} color={colors.textPrimary} />
+					</TouchableOpacity>
+
+					{showMoreDetails && (
+						<View style={styles.moreDetailsPane}>
+							{/* Additional Comments */}
+							{hasComments && (
+								<View style={styles.section}>
+									<View style={styles.sectionHeader}>
+										<Feather name="message-square" size={18} color={colors.primary} />
+										<Text style={styles.sectionTitle}>Additional Comments</Text>
 									</View>
-									<View style={styles.fileCardHeaderText}>
-										<Text style={styles.fileLabel} numberOfLines={Infinity}>
-											{file.file?.name || `File ${index + 1}`}
-										</Text>
-										{pages != null && (
-											<Text style={styles.fileMeta}>{pages} page{pages !== 1 ? "s" : ""}</Text>
-										)}
+									<View style={styles.card}>
+										<Text style={styles.commentsText}>{additionalComments}</Text>
 									</View>
 								</View>
+							)}
 
-								<View style={styles.settingsDivider} />
-
-								{Object.entries(file.settings || {}).map(([key, value], i, arr) => (
-									<View key={key} style={[styles.settingRow, i < arr.length - 1 && styles.settingRowBorder]}>
-										<Text style={styles.settingLabel}>{SETTING_LABELS[key] || key}</Text>
-										<Text style={styles.settingValue}>{formatSettingValue(key, value)}</Text>
+							{/* Payment Proof */}
+							{hasComments && hasProof && <View style={styles.detailsDivider} />}
+							{hasProof && (
+								<View style={styles.section}>
+									<View style={styles.sectionHeader}>
+										<Feather name="image" size={18} color={colors.primary} />
+										<Text style={styles.sectionTitle}>Payment Proof</Text>
 									</View>
-								))}
-							</View>
-						);
-					})}
-				</View>
+									<PaymentProof fileId={paymentProofFile} fileName={paymentProofName} />
+								</View>
+							)}
 
-				{/* Status History */}
-				{statusHistory.length > 0 && (
-					<View style={styles.section}>
-						<View style={styles.sectionHeader}>
-							<Feather name="clock" size={18} color={colors.printRequest} />
-							<Text style={styles.sectionTitle}>Status History</Text>
-						</View>
-						<View style={[styles.card, styles.historyCard]}>
-							{statusHistory.map((entry, index) => {
-								const entryConfig = STATUS_CONFIG[entry.status] || { label: entry.status, color: colors.textSecondary, bg: colors.background };
-								const isLast = index === statusHistory.length - 1;
+							{/* Status History */}
+							{(hasComments || hasProof) && hasHistory && <View style={styles.detailsDivider} />}
+							{hasHistory && (
+								<View style={styles.section}>
+									<View style={styles.sectionHeader}>
+										<Feather name="clock" size={18} color={colors.primary} />
+										<Text style={styles.sectionTitle}>Status History</Text>
+									</View>
+									<View style={[styles.card, styles.historyList]}>
+										{statusHistory.map((entry, index) => {
+											const entryConfig = STATUS_CONFIG[entry.status] || { label: entry.status, color: colors.textSecondary, bg: colors.background };
+											const isLast = index === statusHistory.length - 1;
+											return (
+												<View key={`${entry.status}-${index}`} style={styles.timelineItem}>
+													<View style={styles.timelineLeft}>
+														<View style={[styles.timelineIcon, { backgroundColor: entryConfig.bg }]}>
+															<Feather name={entryConfig.icon || "circle"} size={14} color={entryConfig.color} />
+														</View>
+														{!isLast && <View style={styles.timelineLine} />}
+													</View>
+													<View style={[styles.timelineContent, !isLast && styles.timelineContentSpacing]}>
+														<View style={[styles.timelinePill, { backgroundColor: entryConfig.bg }]}>
+															<Text style={[styles.timelineStatus, { color: entryConfig.color }]}>{entryConfig.label}</Text>
+														</View>
+														<Text style={styles.timelineMeta}>
+															{formatDateTime(entry.at)}
+															{entry.by ? ` · by ${entry.by}` : ""}
+														</Text>
+													</View>
+												</View>
+											);
+										})}
+									</View>
+								</View>
+							)}
+
+							{/* Files */}
+							{(hasComments || hasProof || hasHistory) && <View style={styles.detailsDivider} />}
+							<View style={styles.sectionHeader}>
+								<Feather name="file-text" size={18} color={colors.primary} />
+								<Text style={styles.sectionTitle}>Files</Text>
+							</View>
+							{files.map((file, index) => {
+								const pages = file.file?.numberOfPages;
 								return (
-									<View key={`${entry.status}-${index}`} style={styles.timelineItem}>
-										<View style={styles.timelineLeft}>
-											<View style={[styles.timelineDot, { backgroundColor: entryConfig.color }]} />
-											{!isLast && <View style={styles.timelineLine} />}
-										</View>
-										<View style={[styles.timelineContent, !isLast && styles.timelineContentSpacing]}>
-											<View style={styles.timelineRow}>
-												<Text style={[styles.timelineStatus, { color: entryConfig.color }]}>{entryConfig.label}</Text>
-												<Text style={styles.timelineBy}>by {entry.by}</Text>
+									<View key={file.file?._id ?? index} style={[styles.fileCard, index < files.length - 1 && styles.fileCardSpacing]}>
+										<View style={styles.fileCardHeader}>
+											<View style={styles.fileIndex}>
+												<Text style={styles.fileIndexText}>{index + 1}</Text>
 											</View>
-											<Text style={styles.timelineDate}>{formatDateTime(entry.at)}</Text>
+											<Text style={styles.fileLabel} numberOfLines={1}>
+												{file.file?.name || `File ${index + 1}`}
+											</Text>
+											{pages != null && (
+												<Text style={styles.fileMeta}> · {pages} page{pages !== 1 ? "s" : ""}</Text>
+											)}
+										</View>
+
+										<View style={styles.settingsGrid}>
+											{SETTINGS_LAYOUT.map(({ label, format }) => (
+												<View key={label} style={styles.settingCell}>
+													<Text style={styles.settingLabel}>{label}</Text>
+													<Text style={styles.settingValue}>{format(file.settings || {})}</Text>
+												</View>
+											))}
 										</View>
 									</View>
 								);
 							})}
 						</View>
-					</View>
-				)}
+					)}
+				</View>
 
-				{/* Cancel Job Button */}
-				{CANCELLABLE_STATUSES.includes(jobStatus) && (
+			</ScrollContainer>
+
+			{/* Cancel Job Button — pinned below the scroll so it's always reachable */}
+			{CANCELLABLE_STATUSES.includes(jobStatus) && (
+				<View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}>
 					<TouchableOpacity
 						style={[styles.cancelButton, cancelling && styles.cancelButtonDisabled]}
 						onPress={handleCancelJob}
@@ -412,22 +450,154 @@ const TransactionDetails = () => {
 							</>
 						)}
 					</TouchableOpacity>
-				)}
-			</ScrollView>
+				</View>
+			)}
 		</SafeAreaView>
 	);
 };
 
-//----------------------------------- HELPERS -----------------------------------//
+// The time estimate with a glint sweeping across it, the same effect as the home
+// screen's active-job card: the band crosses in the first 60% of each cycle,
+// then rests off to the right until the next.
+const EtaGlint = ({ eta }) => {
+	const sweep = useRef(new Animated.Value(0)).current;
+	const [width, setWidth] = useState(0);
 
-const InfoRow = ({ label, value, mono = false }) => (
-	<View style={styles.infoRow}>
-		<Text style={styles.infoLabel}>{label}</Text>
-		<Text style={[styles.infoValue, mono && styles.infoValueMono]} numberOfLines={1} ellipsizeMode="middle">
-			{value}
-		</Text>
-	</View>
-);
+	useEffect(() => {
+		// Snap back to 0 explicitly; the loop's own reset doesn't fire everywhere.
+		const loop = Animated.loop(
+			Animated.sequence([
+				Animated.timing(sweep, { toValue: 1, duration: GLINT_DURATION, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+				Animated.timing(sweep, { toValue: 0, duration: 0, useNativeDriver: true }),
+			])
+		);
+		loop.start();
+		return () => loop.stop();
+	}, [sweep]);
+
+	const translateX = sweep.interpolate({
+		inputRange: [0, 0.6, 1],
+		outputRange: [-GLINT_WIDTH, width, width],
+	});
+
+	return (
+		<View style={styles.etaGlintWrap} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+			<Text style={styles.etaValue}>{eta}</Text>
+			{/* A soft band of card-coloured light, built from slices of rising then
+			    falling opacity since there's no gradient library in the app. */}
+			<Animated.View style={[styles.glint, { transform: [{ translateX }, { skewX: "-20deg" }] }]}>
+				{GLINT_SLICES.map((opacity, i) => (
+					<View key={i} style={[styles.glintSlice, { opacity }]} />
+				))}
+			</Animated.View>
+		</View>
+	);
+};
+
+// The uploaded payment screenshot as a thumbnail row; tapping it opens the
+// full image. GET /files/:fileId is sent the auth token like other file reads.
+const PaymentProof = ({ fileId, fileName }) => {
+	const [token, setToken] = useState(null);
+	const [viewing, setViewing] = useState(false);
+
+	useEffect(() => {
+		SecureStore.getItemAsync("authToken").then(setToken).catch(() => {});
+	}, []);
+
+	const source = {
+		uri: `${config.apiBaseUrl}/files/${fileId}`,
+		...(token && { headers: { Authorization: `Bearer ${token}` } }),
+	};
+
+	return (
+		<>
+			<TouchableOpacity style={[styles.card, styles.proofRow]} onPress={() => setViewing(true)} activeOpacity={0.7}>
+				<Image source={source} style={styles.proofThumb} contentFit="cover" transition={200} />
+				<View style={styles.proofText}>
+					<Text style={styles.proofTitle} numberOfLines={1}>
+						{fileName || "Payment screenshot"}
+					</Text>
+					<Text style={styles.proofHint}>Tap to view</Text>
+				</View>
+				<Feather name="maximize-2" size={16} color={colors.textSecondary} />
+			</TouchableOpacity>
+
+			<Modal visible={viewing} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setViewing(false)}>
+				<Pressable style={styles.proofBackdrop} onPress={() => setViewing(false)}>
+					<Image source={source} style={styles.proofFull} contentFit="contain" />
+					<View style={styles.proofClose}>
+						<Feather name="x" size={22} color="#FFFFFF" />
+					</View>
+				</Pressable>
+			</Modal>
+		</>
+	);
+};
+
+// The four-step bar under the estimate, each segment labelled. Steps up to the
+// current one are filled, and the current one keeps pulsing until the job is
+// completed. Cancelled and failed jobs get a single solid bar instead.
+const JobProgress = ({ status, color }) => {
+	const pulse = useRef(new Animated.Value(1)).current;
+	const statusLower = status?.toLowerCase();
+	const isFinal = FINAL_STATUSES.includes(statusLower);
+
+	useEffect(() => {
+		if (isFinal) {
+			pulse.setValue(1);
+			return;
+		}
+		const loop = Animated.loop(
+			Animated.sequence([
+				Animated.timing(pulse, { toValue: 0.3, duration: SEGMENT_PULSE_DURATION / 2, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+				Animated.timing(pulse, { toValue: 1, duration: SEGMENT_PULSE_DURATION / 2, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+			])
+		);
+		loop.start();
+		return () => loop.stop();
+	}, [isFinal, pulse]);
+
+	if (statusLower === "cancelled" || statusLower === "failed") {
+		return (
+			<View style={styles.progressBarContainer}>
+				<View style={[styles.progressSegment, styles.progressSegmentFull, { backgroundColor: color }]} />
+			</View>
+		);
+	}
+
+	const stepIndex = PROGRESS_STEPS.indexOf(statusLower);
+	const currentIndex = stepIndex !== -1 ? stepIndex : (PROGRESS_ALIASES[statusLower] ?? 0);
+
+	return (
+		<View style={styles.progressBarContainer}>
+			{PROGRESS_STEPS.map((step, index) => {
+				const isCurrent = index === currentIndex;
+				const isFilled = index <= currentIndex;
+				return (
+					<View key={step} style={styles.progressStep}>
+						<Animated.View
+							style={[
+								styles.progressSegment,
+								{ backgroundColor: isFilled ? color : colors.borderLight },
+								isCurrent && !isFinal && { opacity: pulse },
+							]}
+						/>
+						<Text
+							style={[
+								styles.progressLabel,
+								isFilled && styles.progressLabelDone,
+								isCurrent && { color, fontWeight: "700" },
+							]}
+							numberOfLines={1}
+						>
+							{STATUS_CONFIG[step].label}
+						</Text>
+					</View>
+				);
+			})}
+		</View>
+	);
+};
 
 //----------------------------------- STYLES -----------------------------------//
 
@@ -441,7 +611,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 20,
-		paddingVertical: 16,
+		paddingVertical: 10,
 		backgroundColor: colors.cardBackground,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
@@ -470,8 +640,7 @@ const styles = StyleSheet.create({
 	summaryCard: {
 		backgroundColor: colors.cardBackground,
 		borderRadius: 20,
-		padding: 24,
-		alignItems: "center",
+		padding: 20,
 		marginBottom: 20,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
@@ -481,51 +650,121 @@ const styles = StyleSheet.create({
 		shadowRadius: 8,
 		elevation: 2,
 	},
-	summaryIconContainer: {
-		width: 72,
-		height: 72,
-		borderRadius: 20,
-		backgroundColor: "#FFE8E5",
-		justifyContent: "center",
+	summaryTop: {
+		flexDirection: "row",
 		alignItems: "center",
-		marginBottom: 16,
+		justifyContent: "space-between",
+		gap: 12,
+	},
+	etaBlock: {
+		flexShrink: 1,
+	},
+	etaCaption: {
+		fontSize: 12,
+		fontWeight: "500",
+		color: colors.textSecondary,
+		marginBottom: 2,
+	},
+	etaValue: {
+		fontSize: 26,
+		fontWeight: "800",
+		color: colors.textPrimary,
+		fontVariant: ["tabular-nums"],
+	},
+	etaGlintWrap: {
+		alignSelf: "flex-start",
 		overflow: "hidden",
 	},
-	shopImage: {
-		width: "100%",
-		height: "100%",
+	glint: {
+		position: "absolute",
+		top: 0,
+		bottom: 0,
+		left: 0,
+		flexDirection: "row",
 	},
-	summaryTitle: {
-		fontSize: 22,
-		fontWeight: "700",
+	glintSlice: {
+		width: GLINT_SLICE_WIDTH,
+		backgroundColor: colors.cardBackground,
+	},
+	summaryFinal: {
+		fontSize: 26,
+		fontWeight: "800",
+	},
+	summaryBadges: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+	},
+	// Same `.job-code` badge as the home screen's active-job card.
+	jobCode: {
+		paddingHorizontal: 8,
+		paddingVertical: 3,
+		borderRadius: 6,
+		overflow: "hidden",
+		backgroundColor: "rgba(0, 217, 163, 0.14)",
 		color: colors.textPrimary,
-		marginBottom: 10,
+		fontSize: 12,
+		fontWeight: "700",
+		letterSpacing: 0.6,
+		fontVariant: ["tabular-nums"],
 	},
 	statusBadge: {
-		paddingHorizontal: 14,
-		paddingVertical: 6,
+		paddingHorizontal: 12,
+		paddingVertical: 5,
 		borderRadius: 20,
-		marginBottom: 10,
 	},
 	statusText: {
-		fontSize: 13,
+		fontSize: 12,
 		fontWeight: "700",
-	},
-	summaryDate: {
-		fontSize: 13,
-		color: colors.textSecondary,
 	},
 	progressBarContainer: {
 		flexDirection: "row",
-		width: "100%",
-		height: 6,
 		gap: 6,
-		marginTop: 20,
-		marginBottom: 4,
+		marginTop: 18,
+	},
+	progressStep: {
+		flex: 1,
+		minWidth: 0,
 	},
 	progressSegment: {
-		flex: 1,
+		height: 6,
 		borderRadius: 3,
+	},
+	progressSegmentFull: {
+		flex: 1,
+	},
+	progressLabel: {
+		marginTop: 6,
+		fontSize: 11,
+		fontWeight: "500",
+		color: colors.textSecondary,
+	},
+	progressLabelDone: {
+		color: colors.textPrimary,
+	},
+	summaryFooter: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		marginTop: 16,
+		paddingTop: 14,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
+	},
+	shopImage: {
+		width: 22,
+		height: 22,
+		borderRadius: 6,
+	},
+	summaryShop: {
+		flex: 1,
+		fontSize: 14,
+		fontWeight: "700",
+		color: colors.textPrimary,
+	},
+	summaryFiles: {
+		fontWeight: "500",
+		color: colors.textSecondary,
 	},
 	section: {
 		marginBottom: 20,
@@ -541,102 +780,129 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		color: colors.textPrimary,
 	},
-	card: {
-		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		paddingHorizontal: 16,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
-	},
-	historyCard: {
+	historyList: {
 		paddingVertical: 16,
 	},
-	infoRow: {
+	moreDetailsToggle: {
 		flexDirection: "row",
-		justifyContent: "space-between",
 		alignItems: "center",
-		paddingVertical: 13,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
+		justifyContent: "space-between",
+		gap: 12,
+		paddingTop: 12,
+		paddingBottom: 4,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
 	},
-	infoLabel: {
-		fontSize: 14,
-		color: colors.textSecondary,
-		fontWeight: "500",
-	},
-	infoValue: {
-		fontSize: 14,
+	moreDetailsTitle: {
+		fontSize: 15,
 		fontWeight: "600",
 		color: colors.textPrimary,
-		maxWidth: "55%",
-		textAlign: "right",
 	},
-	infoValueMono: {
-		fontFamily: "monospace",
-		fontSize: 12,
-		color: colors.textSecondary,
+	detailsDivider: {
+		height: 1,
+		backgroundColor: colors.borderLight,
+		marginBottom: 20,
 	},
+	moreDetailsPane: {
+		marginTop: 12,
+	},
+	// A soft white tile: enough to group each file, without a card's border and shadow.
 	fileCard: {
 		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		padding: 16,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
+		borderRadius: 12,
+		padding: 12,
 	},
 	fileCardSpacing: {
-		marginBottom: 12,
+		marginBottom: 8,
 	},
 	fileCardHeader: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
-		marginBottom: 4,
 	},
-	fileIcon: {
-		width: 36,
-		height: 36,
-		borderRadius: 10,
-		backgroundColor: "#FFE8E5",
-		justifyContent: "center",
+	fileIndex: {
+		flexShrink: 0,
+		minWidth: 22,
+		height: 22,
+		paddingHorizontal: 6,
+		borderRadius: 11,
+		marginRight: 8,
+		backgroundColor: "rgba(0, 217, 163, 0.12)",
 		alignItems: "center",
+		justifyContent: "center",
+	},
+	fileIndexText: {
+		fontSize: 12,
+		fontWeight: "700",
+		color: colors.primaryDark,
 	},
 	fileLabel: {
-		flex: 1,
+		flexShrink: 1,
 		fontSize: 14,
 		fontWeight: "700",
 		color: colors.textPrimary,
 	},
-	fileCardHeaderText: {
-		flex: 1,
-	},
 	fileMeta: {
+		flexShrink: 0,
 		fontSize: 12,
 		color: colors.textSecondary,
 		fontWeight: "500",
+	},
+	proofRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 12,
+	},
+	proofThumb: {
+		width: 56,
+		height: 56,
+		borderRadius: 10,
+		backgroundColor: colors.borderLight,
+	},
+	proofText: {
+		flex: 1,
+	},
+	proofTitle: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: colors.textPrimary,
+	},
+	proofHint: {
+		fontSize: 12,
+		color: colors.textSecondary,
 		marginTop: 2,
 	},
-	statsRow: {
-		flexDirection: "row",
-		gap: 10,
-		marginBottom: 20,
-	},
-	statCard: {
+	proofBackdrop: {
 		flex: 1,
-		backgroundColor: colors.cardBackground,
-		borderRadius: 14,
-		paddingVertical: 14,
-		paddingHorizontal: 6,
+		backgroundColor: "rgba(0, 0, 0, 0.9)",
+		justifyContent: "center",
 		alignItems: "center",
+	},
+	proofFull: {
+		width: "100%",
+		height: "80%",
+	},
+	proofClose: {
+		position: "absolute",
+		top: 48,
+		right: 20,
+		width: 40,
+		height: 40,
+		borderRadius: 20,
+		backgroundColor: "rgba(255, 255, 255, 0.15)",
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	commentsText: {
+		fontSize: 14,
+		lineHeight: 20,
+		color: colors.textPrimary,
+	},
+	// The shared card look for Cost Breakdown and the blocks in More details.
+	card: {
+		backgroundColor: colors.cardBackground,
+		borderRadius: 16,
+		paddingHorizontal: 16,
+		paddingVertical: 12,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 		shadowColor: colors.shadowLight,
@@ -644,38 +910,24 @@ const styles = StyleSheet.create({
 		shadowOpacity: 1,
 		shadowRadius: 8,
 		elevation: 2,
-	},
-	statValue: {
-		fontSize: 20,
-		fontWeight: "800",
-		color: colors.textPrimary,
-		marginBottom: 4,
-	},
-	statLabel: {
-		fontSize: 11,
-		color: colors.textSecondary,
-		fontWeight: "500",
 	},
 	costRow: {
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "center",
-		paddingVertical: 13,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
-	},
-	costRowLeft: {
-		flex: 1,
+		gap: 12,
+		paddingVertical: 5,
 	},
 	costLabel: {
+		flex: 1,
 		fontSize: 14,
 		fontWeight: "600",
 		color: colors.textPrimary,
 	},
 	costSubLabel: {
 		fontSize: 12,
+		fontWeight: "500",
 		color: colors.textSecondary,
-		marginTop: 2,
 	},
 	costValue: {
 		fontSize: 14,
@@ -686,7 +938,10 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "center",
-		paddingVertical: 14,
+		marginTop: 6,
+		paddingTop: 10,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
 	},
 	totalLabel: {
 		fontSize: 16,
@@ -696,25 +951,22 @@ const styles = StyleSheet.create({
 	totalValue: {
 		fontSize: 18,
 		fontWeight: "800",
-		color: colors.printRequest,
+		color: colors.primary,
 	},
-	settingsDivider: {
-		height: 1,
-		backgroundColor: colors.borderLight,
-		marginBottom: 12,
-	},
-	settingRow: {
+	// Indented to line up with the file name, past the index circle.
+	settingsGrid: {
 		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		paddingVertical: 9,
+		flexWrap: "wrap",
+		marginTop: 8,
+		paddingLeft: 30,
+		rowGap: 8,
 	},
-	settingRowBorder: {
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
+	settingCell: {
+		width: "50%",
+		paddingRight: 8,
 	},
 	settingLabel: {
-		fontSize: 13,
+		fontSize: 11,
 		color: colors.textSecondary,
 		fontWeight: "500",
 	},
@@ -722,65 +974,67 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: "600",
 		color: colors.textPrimary,
-		textAlign: "right",
-		maxWidth: "55%",
 	},
 	timelineItem: {
 		flexDirection: "row",
 	},
 	timelineLeft: {
 		alignItems: "center",
-		width: 24,
+		width: 32,
 		marginRight: 12,
-		marginTop: 4,
 	},
-	timelineDot: {
-		width: 12,
-		height: 12,
-		borderRadius: 6,
+	timelineIcon: {
+		width: 32,
+		height: 32,
+		borderRadius: 16,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	timelineLine: {
 		width: 2,
 		flex: 1,
-		backgroundColor: colors.borderLight,
-		marginTop: 4,
+		backgroundColor: "#E4E9F2",
+		marginVertical: 4,
+		borderRadius: 1,
 	},
 	timelineContent: {
 		flex: 1,
-		paddingTop: 0,
-		paddingBottom: 16,
+		paddingTop: 4,
+		paddingBottom: 4,
+		alignItems: "flex-start",
 	},
 	timelineContentSpacing: {
 		paddingBottom: 20,
 	},
-	timelineRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-		marginBottom: 4,
+	timelinePill: {
+		paddingHorizontal: 10,
+		paddingVertical: 3,
+		borderRadius: 999,
+		marginBottom: 6,
 	},
 	timelineStatus: {
-		fontSize: 14,
+		fontSize: 13,
 		fontWeight: "700",
 	},
-	timelineBy: {
+	timelineMeta: {
 		fontSize: 12,
 		color: colors.textSecondary,
 	},
-	timelineDate: {
-		fontSize: 12,
-		color: colors.textSecondary,
+	footer: {
+		paddingHorizontal: 20,
+		paddingTop: 12,
+		backgroundColor: colors.cardBackground,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
 	},
 	cancelButton: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 8,
-		backgroundColor: colors.printRequest,
+		backgroundColor: colors.dangerDark,
 		paddingVertical: 16,
 		borderRadius: 16,
-		marginTop: 8,
-		marginBottom: 20,
 	},
 	cancelButtonDisabled: {
 		opacity: 0.6,

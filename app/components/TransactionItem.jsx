@@ -4,36 +4,35 @@ import { colors } from "../../constants/colors";
 
 const STATUS_CONFIG = {
 	completed: { label: "Completed", color: colors.primary, bg: "rgba(0, 217, 163, 0.12)" },
-	cancelled: { label: "Cancelled", color: colors.printRequest, bg: "rgba(255, 139, 123, 0.12)" },
+	cancelled: { label: "Cancelled", color: colors.danger, bg: "rgba(255, 90, 95, 0.12)" },
 	failed: { label: "Failed", color: colors.danger, bg: "rgba(255, 90, 95, 0.12)" },
 };
 
 const TransactionItem = ({ transaction, onPress }) => {
 	const statusConfig = STATUS_CONFIG[transaction.status] || { label: transaction.status, color: colors.textSecondary, bg: colors.background };
-	const pageType = transaction.files?.[0]?.settings?.pageType;
 
 	return (
 		<TouchableOpacity style={styles.transactionCard} onPress={onPress} activeOpacity={0.7}>
 			<View style={styles.transactionLeft}>
-				<View style={styles.transactionIcon}>
-					<Feather name="printer" size={18} color={colors.textSecondary} />
+				<View style={styles.iconColumn}>
+					<View style={styles.transactionIcon}>
+						<Feather name="printer" size={18} color={colors.textSecondary} />
+					</View>
+					<Text style={styles.transactionTime} numberOfLines={1}>
+						{transaction.time}
+					</Text>
 				</View>
 
 				<View style={styles.transactionInfo}>
-					<Text style={styles.transactionName}>Print Job</Text>
-					<View style={styles.transactionDetails}>
-						<Text style={styles.transactionTime}>{transaction.time}</Text>
-						<Text style={styles.transactionDot}> • </Text>
-						<Text style={styles.transactionFiles}>
-							{transaction.fileCount} file{transaction.fileCount !== 1 ? "s" : ""}
-						</Text>
-						{pageType && (
-							<>
-								<Text style={styles.transactionDot}> • </Text>
-								<Text style={styles.transactionSize}>{pageType}</Text>
-							</>
-						)}
-					</View>
+					{transaction.code ? (
+						<Text style={styles.jobCode}>#{transaction.code}</Text>
+					) : (
+						<Text style={styles.transactionName}>Print Job</Text>
+					)}
+					<Text style={styles.transactionDetails} numberOfLines={1}>
+						{transaction.shopName && <Text style={styles.shopName}>{transaction.shopName} · </Text>}
+						{transaction.fileCount} file{transaction.fileCount !== 1 ? "s" : ""}
+					</Text>
 				</View>
 			</View>
 
@@ -71,7 +70,7 @@ const styles = StyleSheet.create({
 	},
 
 	transactionRight: {
-		alignItems: "flex-end",
+		alignItems: "center",
 		justifyContent: "center",
 		gap: 6,
 	},
@@ -82,6 +81,17 @@ const styles = StyleSheet.create({
 	},
 
 
+	// The printer tile with the job's time tucked underneath.
+	iconColumn: {
+		alignItems: "center",
+		gap: 5,
+	},
+	transactionTime: {
+		fontSize: 10,
+		fontWeight: "600",
+		color: colors.textSecondary,
+		fontVariant: ["tabular-nums"],
+	},
 	transactionIcon: {
 		width: 40,
 		height: 40,
@@ -92,42 +102,41 @@ const styles = StyleSheet.create({
 	},
 	transactionInfo: {
 		flex: 1,
+		minWidth: 0,
+		alignItems: "flex-start",
+		gap: 5,
+	},
+	// Same `.job-code` badge as the home screen's active-job card.
+	jobCode: {
+		paddingHorizontal: 8,
+		paddingVertical: 2,
+		borderRadius: 6,
+		overflow: "hidden",
+		backgroundColor: "rgba(0, 217, 163, 0.14)",
+		color: colors.textPrimary,
+		fontSize: 15,
+		fontWeight: "700",
+		letterSpacing: 0.6,
+		fontVariant: ["tabular-nums"],
 	},
 	transactionName: {
 		fontSize: 15,
 		fontWeight: "500",
 		color: colors.textPrimary,
-		marginBottom: 4,
 	},
 	transactionDetails: {
-		flexDirection: "row",
-		alignItems: "center",
-	},
-	transactionTime: {
+		maxWidth: "100%",
 		fontSize: 13,
 		color: colors.textSecondary,
-		opacity: 0.7,
 	},
-	transactionDot: {
-		fontSize: 13,
-		color: colors.textSecondary,
-		opacity: 0.5,
-	},
-	transactionFiles: {
-		fontSize: 13,
-		color: colors.textSecondary,
-		opacity: 0.7,
-	},
-	transactionSize: {
-		fontSize: 13,
-		color: colors.textSecondary,
-		opacity: 0.7,
+	shopName: {
+		fontWeight: "600",
+		color: colors.textPrimary,
 	},
 	statusBadge: {
 		paddingHorizontal: 10,
 		paddingVertical: 4,
 		borderRadius: 20,
-		marginLeft: 8,
 	},
 	statusText: {
 		fontSize: 12,

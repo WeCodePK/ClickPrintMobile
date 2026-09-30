@@ -13,6 +13,12 @@ const transformTransaction = (t) => {
 		files: t.files || [],
 		statusHistory: t.statusHistory || [],
 		cost: t.cost?.total || 0,
+		// The full breakdown ({ lines, extra, total }); `cost` above is just the total.
+		costBreakdown: t.cost || null,
+		additionalComments: t.additionalComments || "",
+		// Populated as { _id, name } by the backend, so keep just the id.
+		paymentProofFile: t.paymentProofFile?._id || t.paymentProofFile || null,
+		paymentProofFileName: t.paymentProofFile?.name || null,
 	};
 };
 

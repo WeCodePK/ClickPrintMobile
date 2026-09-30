@@ -47,8 +47,10 @@ const AboutPage = () => {
 					<View style={styles.logoCard}>
 						<Image source={appLogo} style={styles.logo} resizeMode="contain" />
 					</View>
-					<Text style={styles.appName}>ClickPrint</Text>
-					<Text style={styles.buildNumber}>Build Number: {config.buildNumber}</Text>
+					<View style={styles.logoText}>
+						<Text style={styles.appName}>ClickPrint</Text>
+						<Text style={styles.buildNumber}>Build: {config.buildNumber}</Text>
+					</View>
 				</View>
 
 				<View style={styles.descriptionSection}>
@@ -138,15 +140,20 @@ const styles = StyleSheet.create({
 		paddingBottom: 40,
 		alignItems: "center",
 	},
+	// Logo on the left, name and build number beside it, lined up with the sections below.
 	logoSection: {
+		width: "100%",
+		flexDirection: "row",
 		alignItems: "center",
+		gap: 16,
+		paddingHorizontal: 24,
 		marginTop: 32,
 		marginBottom: 24,
 	},
 	logoCard: {
 		backgroundColor: colors.cardBackground,
-		borderRadius: 24,
-		padding: 16,
+		borderRadius: 20,
+		padding: 12,
 		shadowColor: "#000",
 		shadowOffset: { width: 0, height: 4 },
 		shadowOpacity: 0.1,
@@ -156,15 +163,17 @@ const styles = StyleSheet.create({
 		borderColor: colors.borderLight,
 	},
 	logo: {
-		width: 100,
-		height: 100,
-		borderRadius: 16,
+		width: 64,
+		height: 64,
+		borderRadius: 12,
+	},
+	logoText: {
+		flex: 1,
 	},
 	appName: {
 		fontSize: 24,
 		fontWeight: "800",
 		color: colors.textPrimary,
-		marginTop: 16,
 		letterSpacing: 0.5,
 	},
 	buildNumber: {
