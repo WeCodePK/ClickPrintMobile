@@ -2,16 +2,18 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dimensions, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import PullToRefreshScrollView from "../../components/PullToRefreshScrollView";
-import config from "../../config/config";
 import { colors } from "../../constants/colors";
-import { useAuth } from "../../context/auth";
 import { useActiveJobs } from "../../hooks/useActiveJobs";
 import { useDrafts } from "../../hooks/useDrafts";
+import StaleDataNotice from "../../components/StaleDataNotice";
+import { cancelJob, createDraft, deleteDraft } from "../../services/drafts";
 import { showAlert } from "../../utils/alert";
+import { friendlyMessage } from "../../utils/errors";
+import { useUploads } from "../../utils/uploadManager";
 import SecureStore from "../../utils/storage";
 import ActiveJobCard from "../components/ActiveJobCard";
 import DraftItem from "../components/DraftItem";
@@ -19,16 +21,45 @@ import DraftItem from "../components/DraftItem";
 //----------------------------------- CONSTANTS -----------------------------------//
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-const API_BASE_URL = config.apiBaseUrl;
+
+//----------------------------------- HOOKS -----------------------------------//
+
+// Unfinished print-job uploads grouped by job: "new" (no draft yet) or
+// "draft:<id>". Payment proofs are left out; they belong to the top-up screen.
+const useUploadGroups = () => {
+	const uploads = useUploads();
+	return useMemo(() => {
+		const groups = new Map();
+		for (const item of uploads) {
+			if (item.scope !== "new" && !item.scope.startsWith("draft:")) continue;
+			if (!groups.has(item.scope)) {
+				groups.set(item.scope, {
+					scope: item.scope,
+					draftId: item.scope.startsWith("draft:") ? item.scope.slice(6) : null,
+					total: 0,
+					done: 0,
+					waiting: false,
+					failed: false,
+				});
+			}
+			const group = groups.get(item.scope);
+			group.total++;
+			if (item.status === "success") group.done++;
+			if (item.status === "waiting") group.waiting = true;
+			if (item.status === "failed") group.failed = true;
+		}
+		return [...groups.values()];
+	}, [uploads]);
+};
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
 const HomePage = () => {
 	const router = useRouter();
-	const { drafts, loading, error, refresh, refreshing, reload } = useDrafts();
-	const { activeJobs, loading: loadingJobs, refreshing: refreshingJobs, refresh: refreshJobs, reload: reloadJobs } = useActiveJobs();
+	const { drafts, loading, error, refresh, refreshing, reload, updatedAt } = useDrafts();
+	const { activeJobs, loading: loadingJobs, error: jobsError, refreshing: refreshingJobs, refresh: refreshJobs, reload: reloadJobs, updatedAt: jobsUpdatedAt } = useActiveJobs();
 	const [userName, setUserName] = useState("");
-	const { signOut } = useAuth();
+	const uploadGroups = useUploadGroups();
 
 	const loadUserData = useCallback(async () => {
 		try {
@@ -51,11 +82,11 @@ const HomePage = () => {
 		}, [reload, reloadJobs, loadUserData])
 	);
 
-	useEffect(() => {
-		if (error && error.includes("401")) {
-			signOut().then(() => router.replace("/"));
-		}
-	}, [error, router, signOut]);
+	// A failed refresh keeps whatever was already loaded on screen and shows a
+	// notice with a retry instead of replacing the whole page. (A 401 signs out
+	// centrally, see utils/api.js.)
+	const loadFailed = !!error || !!jobsError;
+	const oldestUpdate = Math.min(updatedAt || Infinity, jobsUpdatedAt || Infinity);
 
 	const refreshAll = () => {
 		refresh();
@@ -69,23 +100,11 @@ const HomePage = () => {
 			try {
 				const pendingShopId = await SecureStore.getItemAsync("pendingShopId");
 				if (pendingShopId) {
+					const draft = await createDraft({ shop: pendingShopId });
+					// Only forget the shop once its draft exists, so a failed
+					// attempt (e.g. offline) is retried on the next visit.
 					await SecureStore.deleteItemAsync("pendingShopId");
-					const token = await SecureStore.getItemAsync("authToken");
-					if (token) {
-						const draftRes = await fetch(`${API_BASE_URL}/drafts`, {
-							method: "POST",
-							headers: {
-								Authorization: `Bearer ${token}`,
-								"Content-Type": "application/json",
-							},
-							body: JSON.stringify({ shop: pendingShopId }),
-						});
-						if (draftRes.ok) {
-							const draftData = await draftRes.json();
-							const draftId = draftData.data?.draft?._id || draftData.draft?._id;
-							router.push(`/upload-document?draftId=${draftId}&shopId=${pendingShopId}`);
-						}
-					}
+					router.push(`/upload-document?draftId=${draft._id}&shopId=${pendingShopId}`);
 				}
 			} catch (err) {
 				console.error("Error processing pending shop:", err);
@@ -104,30 +123,16 @@ const HomePage = () => {
 					style: "destructive",
 					onPress: async () => {
 						try {
-							const token = await SecureStore.getItemAsync("authToken");
-							const response = await fetch(`${API_BASE_URL}/jobs/${job.id}/status`, {
-								method: "PATCH",
-								headers: {
-									"Content-Type": "application/json",
-									Authorization: `Bearer ${token}`,
-								},
-								body: JSON.stringify({ status: "cancelled" }),
-							});
-							const data = await response.json();
-							if (response.ok && data.success !== false) {
-								reloadJobs();
-							} else {
-								showAlert("Error", data.message || "Failed to cancel the job.");
-							}
+							await cancelJob(job.id);
 						} catch (err) {
 							console.error("Error cancelling job:", err);
-							showAlert("Error", "Something went wrong. Please try again.");
+							showAlert("Couldn't cancel the job", friendlyMessage(err, "Failed to cancel the job."));
 						}
 					},
 				},
 			]
 		);
-	}, [reloadJobs]);
+	}, []);
 
 	const handleDeleteDraft = useCallback((draftId) => {
 		showAlert(
@@ -140,27 +145,16 @@ const HomePage = () => {
 					style: "destructive",
 					onPress: async () => {
 						try {
-							const token = await SecureStore.getItemAsync("authToken");
-							const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-								method: "DELETE",
-								headers: {
-									Authorization: `Bearer ${token}`,
-								},
-							});
-							if (response.ok) {
-								reload();
-							} else {
-								showAlert("Failed to delete draft. Please try again.");
-							}
+							await deleteDraft(draftId);
 						} catch (err) {
 							console.error("Error deleting draft:", err);
-							showAlert("Failed to delete draft. Please try again.");
+							showAlert("Couldn't delete the draft", friendlyMessage(err, "Failed to delete draft. Please try again."));
 						}
 					},
 				},
 			]
 		);
-	}, [reload]);
+	}, []);
 
 	const handleDraftPress = (draft) => {
 		const documents = draft.files.map(f => ({
@@ -191,21 +185,11 @@ const HomePage = () => {
 		} else {
 			router.push({
 				pathname: "/draft-details",
-				params: { draft: JSON.stringify(draft) }
+				params: { draftId: draft._id }
 			});
 		}
 	};
 
-	if (error) {
-		return (
-			<View style={styles.centerContainer}>
-				<Text style={styles.errorText}>Error loading drafts</Text>
-				<TouchableOpacity onPress={refresh} style={styles.retryButton}>
-					<Text style={styles.retryText}>Retry</Text>
-				</TouchableOpacity>
-			</View>
-		);
-	}
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
@@ -263,6 +247,50 @@ const HomePage = () => {
 				</View>
 
 				<View style={styles.listsWrapper}>
+					{/* Print jobs with files still uploading (or uploaded but not yet
+					    continued), so the user can get back to them. */}
+					{uploadGroups.map((group) => (
+						<TouchableOpacity
+							key={group.scope}
+							style={styles.uploadsCard}
+							activeOpacity={0.8}
+							onPress={() =>
+								router.push(group.draftId ? `/upload-document?draftId=${group.draftId}` : "/upload-document")
+							}
+						>
+							<Feather
+								name={group.waiting ? "wifi-off" : group.done === group.total ? "check-circle" : "upload-cloud"}
+								size={20}
+								color={colors.primary}
+							/>
+							<View style={styles.uploadsCardTexts}>
+								<Text style={styles.uploadsCardTitle}>
+									{group.done === group.total
+										? `${group.total} file${group.total === 1 ? "" : "s"} ready to print`
+										: `Uploading ${group.done} of ${group.total} file${group.total === 1 ? "" : "s"}`}
+								</Text>
+								<Text style={styles.uploadsCardSubtitle}>
+									{group.failed
+										? "Some files need your attention"
+										: group.waiting
+											? "Waiting for connection, resumes automatically"
+											: group.done === group.total
+												? "Tap to continue your print job"
+												: "Tap to view progress"}
+								</Text>
+							</View>
+							<Feather name="chevron-right" size={20} color={colors.textSecondary} />
+						</TouchableOpacity>
+					))}
+
+					<StaleDataNotice
+						error={loadFailed ? error || jobsError : null}
+						updatedAt={Number.isFinite(oldestUpdate) ? oldestUpdate : null}
+						hasData={drafts.length > 0 || activeJobs.length > 0}
+						onRetry={refreshAll}
+						retrying={refreshing || refreshingJobs}
+					/>
+
 					{/* Active Jobs */}
 					{!loadingJobs && activeJobs.length > 0 && (
 						<View style={styles.listCard}>
@@ -276,7 +304,7 @@ const HomePage = () => {
 										job={job}
 										isLast={index === activeJobs.length - 1}
 										onCancel={handleCancelJob}
-										onPress={() => router.push({ pathname: "/job-details", params: { transaction: JSON.stringify(job) } })}
+										onPress={() => router.push({ pathname: "/job-details", params: { id: job.id } })}
 									/>
 								))}
 							</View>
@@ -285,7 +313,7 @@ const HomePage = () => {
 
 					{/* User Drafts — shown when there are drafts, or as the empty state when
 					    there are no active jobs either, so the page is never blank. */}
-					{!loading && (drafts.length > 0 || (!loadingJobs && activeJobs.length === 0)) && (
+					{!loading && (drafts.length > 0 || (!loadingJobs && activeJobs.length === 0 && !loadFailed)) && (
 						<View style={styles.listCard}>
 							<View style={styles.sectionHeader}>
 								<Text style={styles.sectionTitle}>My Drafts</Text>
@@ -322,27 +350,27 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: colors.background,
 	},
-	centerContainer: {
-		flex: 1,
-		justifyContent: "center",
+	uploadsCard: {
+		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: colors.background,
-	},
-	errorText: {
-		fontSize: 16,
-		color: colors.textPrimary,
+		gap: 12,
+		backgroundColor: colors.cardBackground,
+		borderRadius: 12,
+		padding: 14,
 		marginBottom: 16,
 	},
-	retryButton: {
-		backgroundColor: colors.primary,
-		paddingHorizontal: 24,
-		paddingVertical: 12,
-		borderRadius: 8,
+	uploadsCardTexts: {
+		flex: 1,
 	},
-	retryText: {
-		color: colors.cardBackground,
-		fontWeight: "600",
-		fontSize: 14,
+	uploadsCardTitle: {
+		fontSize: 15,
+		fontWeight: "700",
+		color: colors.textPrimary,
+	},
+	uploadsCardSubtitle: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		marginTop: 2,
 	},
 	scrollView: {
 		flex: 1,

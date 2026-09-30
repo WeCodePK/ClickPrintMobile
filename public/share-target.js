@@ -18,6 +18,11 @@
 const SHARE_TARGET_PATH = "/share-target";
 const SHARED_FILES_CACHE = "clickprint-shared-files";
 
+// Caches holding app data rather than app files. The workers' activate
+// handlers must keep these when clearing old builds' caches. Names must match
+// utils/sharedFiles.js, utils/pendingFiles.js and utils/fileCache.js.
+const APP_DATA_CACHES = [SHARED_FILES_CACHE, "clickprint-pending-uploads", "clickprint-file-cache"];
+
 self.addEventListener("fetch", (event) => {
 	const { request } = event;
 	const url = new URL(request.url);

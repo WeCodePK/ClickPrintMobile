@@ -13,15 +13,15 @@ self.addEventListener("install", (event) => {
 	self.skipWaiting();
 });
 
-// Clean up caches from previous versions. Shared files waiting for the upload
-// screen are kept.
+// Clean up caches from previous versions. App data caches (shared files
+// waiting for the upload screen, files waiting to upload) are kept.
 self.addEventListener("activate", (event) => {
 	event.waitUntil(
 		(async () => {
 			const keys = await caches.keys();
 			await Promise.all(
 				keys
-					.filter((key) => key !== CACHE_NAME && key !== SHARED_FILES_CACHE)
+					.filter((key) => key !== CACHE_NAME && !APP_DATA_CACHES.includes(key))
 					.map((key) => caches.delete(key))
 			);
 			await self.clients.claim();

@@ -2,14 +2,18 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import SecureStore from "../utils/storage";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import StaleDataNotice from "../components/StaleDataNotice";
+import { useDraftQuery, useShopsQuery } from "../hooks/queries";
+import { useRetryStatus } from "../hooks/useRetryStatus";
+import { checkDraft, updateDraft } from "../services/drafts";
 import { documentsFromDraft, segmentsArrayFromDraft, flattenSegments } from "../utils/draft";
+import { friendlyMessage } from "../utils/errors";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -42,11 +46,11 @@ const ShopDetails = () => {
 	const insets = useSafeAreaInsets();
 	const params = useLocalSearchParams();
 
-	const [shops, setShops] = useState([]);
+	// Shops come from the cache first, so the list shows offline too.
+	const { shops, loading, error, refresh: fetchShops, refreshing, updatedAt } = useShopsQuery();
 	const [selectedShop, setSelectedShop] = useState(null);
-	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
-	const [error, setError] = useState(null);
+	const retry = useRetryStatus();
 	const [searchQuery, setSearchQuery] = useState("");
 
 	// Parse params from print-settings (fast path); the draft is the source of
@@ -91,40 +95,27 @@ const ShopDetails = () => {
 	);
 
 	useEffect(() => {
-		fetchShops();
-		if (draftId) {
-			hydrateFromDraft();
-		} else if (parsedDocuments.length === 0 || parsedSettings.length === 0) {
+		if (!draftId && (parsedDocuments.length === 0 || parsedSettings.length === 0)) {
 			showAlert("Error", "Missing required information. Please go back.");
 			router.replace("/(tabs)/home");
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
-	// Restore documents/settings and pre-select the draft's saved shop.
-	const hydrateFromDraft = async () => {
-		try {
-			const token = await SecureStore.getItemAsync("authToken");
-			const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-				},
-			});
-			if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-			const data = await response.json();
-			const draft = data.data?.draft || null;
-			if (!draft) return;
-			const docs = documentsFromDraft(draft);
-			if (docs.length > 0) {
-				setParsedDocuments(docs);
-				setParsedSettings(segmentsArrayFromDraft(draft));
-			}
-			const shopId = draft.shop?._id || (typeof draft.shop === "string" ? draft.shop : null);
-			if (shopId) setSelectedShop(shopId);
-		} catch (e) {
-			console.error("Error loading draft for shop selection:", e);
+	// Restore documents/settings and pre-select the draft's saved shop. Runs
+	// again when a fresher copy arrives, but never overrides the user's pick.
+	const { data: savedDraft } = useDraftQuery(draftId);
+	const userPickedShop = useRef(false);
+	useEffect(() => {
+		if (!savedDraft) return;
+		const docs = documentsFromDraft(savedDraft);
+		if (docs.length > 0) {
+			setParsedDocuments(docs);
+			setParsedSettings(segmentsArrayFromDraft(savedDraft));
 		}
-	};
+		const shopId = savedDraft.shop?._id || (typeof savedDraft.shop === "string" ? savedDraft.shop : null);
+		if (shopId && !userPickedShop.current) setSelectedShop(shopId);
+	}, [savedDraft]);
 
 	// Back returns to print-settings (which repopulates from the saved draft).
 	const handleBack = () => {
@@ -135,33 +126,8 @@ const ShopDetails = () => {
 		}
 	};
 
-	const fetchShops = async () => {
-		try {
-			setLoading(true);
-			setError(null);
-			const token = await SecureStore.getItemAsync("authToken");
-			const response = await fetch(`${API_BASE_URL}/shops`, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-				},
-			});
-
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-
-			const data = await response.json();
-			console.log("shops respose", data.data)
-			setShops(data.data?.shops || []);
-		} catch (err) {
-			console.error("Error fetching shops:", err);
-			setError(err.message || "Failed to load shops. Please try again.");
-		} finally {
-			setLoading(false);
-		}
-	};
-
 	const handleShopSelect = (shop) => {
+		userPickedShop.current = true;
 		setSelectedShop(shop._id);
 	};
 
@@ -173,49 +139,16 @@ const ShopDetails = () => {
 
 		try {
 			setSubmitting(true);
-			setError(null);
-			const token = await SecureStore.getItemAsync("authToken");
-
-			// Step 1: Update draft with selected shop
-			const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-				method: "PUT",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ shop: selectedShop }),
-			});
-			const updateData = await updateResponse.json();
-			if (!updateResponse.ok) {
-				throw new Error(updateData.message || "Failed to update shop.");
-			}
-			console.log("Draft updated with shop:", updateData);
-
-			// Step 2: Check draft to calculate cost
-			const checkResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}/check`, {
-				method: "PATCH",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				},
-			});
-			const checkData = await checkResponse.json();
-			if (!checkResponse.ok) {
-				throw new Error(checkData.message || "Failed to calculate cost.");
-			}
-			console.log("Draft checked with cost:", checkData);
-
-			// Navigate to draft-details with the full checked draft
-			router.push({
-				pathname: "/draft-details",
-				params: { draft: JSON.stringify(checkData.data.draft) },
-			});
+			// Both steps are safe to repeat, so they retry on their own.
+			await updateDraft(draftId, { shop: selectedShop }, { onRetry: retry.onRetry });
+			const checked = await checkDraft(draftId, { onRetry: retry.onRetry });
+			router.push({ pathname: "/draft-details", params: { draftId: checked._id } });
 		} catch (err) {
 			console.error("Error processing draft:", err);
-			setError(err.message);
-			showAlert("Error", err.message || "Failed to process draft. Please try again.");
+			showAlert("Couldn't continue", friendlyMessage(err, "Failed to process draft. Please try again."));
 		} finally {
 			setSubmitting(false);
+			retry.reset();
 		}
 	};
 
@@ -277,6 +210,7 @@ const ShopDetails = () => {
 			) : (
 				<>
 					<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+						<StaleDataNotice error={error} updatedAt={updatedAt} hasData onRetry={fetchShops} retrying={refreshing} />
 						{filteredShops.length === 0 ? (
 							<View style={styles.emptyContainer}>
 								<Feather name="search" size={48} color={colors.textSecondary} />
@@ -301,7 +235,10 @@ const ShopDetails = () => {
 							disabled={!selectedShop || submitting}
 						>
 							{submitting ? (
-								<ActivityIndicator color={colors.activityIndicator} />
+								<>
+									<ActivityIndicator color={colors.activityIndicator} />
+									{retry.label && <Text style={styles.continueButtonText}>{retry.label}</Text>}
+								</>
 							) : (
 								<>
 									<Text style={styles.continueButtonText}>Continue</Text>

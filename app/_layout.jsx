@@ -4,11 +4,15 @@ import { Slot, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { AuthProvider, useAuth } from "../context/auth";
 import { colors } from "../constants/colors";
 import WebInstallGate from "../components/WebInstallGate";
 import AlertHost from "../components/CustomAlert";
 import ServiceWorkerUpdater from "../components/ServiceWorkerUpdater";
+import OfflineBanner from "../components/OfflineBanner";
+import { persistOptions, queryClient } from "../lib/queryClient";
+import { initUploads } from "../utils/uploadManager";
 
 SplashScreen.preventAutoHideAsync();
 SystemUI.setBackgroundColorAsync(colors.background);
@@ -51,6 +55,11 @@ function RootNavigation() {
   else if (authState === "needs-profile" && !inProfileSetup) redirectTarget = "/profile-setup";
   else if (authState === "authed" && (inGuestOnly || inProfileSetup)) redirectTarget = "/(tabs)/home";
 
+  // Resume uploads left unfinished last time (closed app, reload, offline).
+  useEffect(() => {
+    if (authState === "authed") initUploads();
+  }, [authState]);
+
   useEffect(() => {
     if (authState === "checking") return;
     if (redirectTarget) {
@@ -74,9 +83,14 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <WebInstallGate>
-        <AuthProvider>
-          <RootNavigation />
-        </AuthProvider>
+        {/* Cached backend data, saved on the device so screens have something
+            to show offline (see lib/queryClient.js). */}
+        <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+          <AuthProvider>
+            <RootNavigation />
+          </AuthProvider>
+          <OfflineBanner />
+        </PersistQueryClientProvider>
         <AlertHost />
       </WebInstallGate>
       {/* Outside the gate so updates also apply on the install page, and

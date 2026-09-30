@@ -5,17 +5,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import config from "../config/config";
 import { colors } from "../constants/colors";
+import { useDraftQuery, useShopQuery } from "../hooks/queries";
+import { useRetryStatus } from "../hooks/useRetryStatus";
+import { checkDraft, updateDraft } from "../services/drafts";
 import { showAlert } from "../utils/alert";
 import { DEFAULT_SETTINGS, documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
+import { friendlyMessage } from "../utils/errors";
 import { exceedsPageCount, findSplitOverlap } from "../utils/pageRanges";
-import SecureStore from "../utils/storage";
 import DocumentSettingsForm from "./components/printSettings/DocumentSettingsForm";
-
-//----------------------------------- CONSTANTS -----------------------------------//
-
-const API_BASE_URL = config.apiBaseUrl;
 
 //----------------------------------- HELPERS -----------------------------------//
 
@@ -124,79 +122,33 @@ const PrintSettings = () => {
 		}
 		return Array.from({ length: parsedDocuments.length || 1 }, () => [{ ...DEFAULT_SETTINGS }]);
 	});
-	const [hydrating, setHydrating] = useState(!!draftId);
 	const [submitting, setSubmitting] = useState(false);
-	const [draftShopId, setDraftShopId] = useState(params.shopId || null);
-	const [shopName, setShopName] = useState(null);
-
-	// Load shop name if draftShopId is present
-	useEffect(() => {
-		if (!draftShopId) return;
-		let active = true;
-		(async () => {
-			try {
-				const token = await SecureStore.getItemAsync("authToken");
-				const res = await fetch(`${API_BASE_URL}/shops/${draftShopId}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				});
-				if (res.ok) {
-					const data = await res.json();
-					const s = data.data?.shop || data.shop;
-					if (active && s?.name) setShopName(s.name);
-				}
-			} catch (e) {
-				console.error("Could not fetch shop name for settings:", e);
-			}
-		})();
-		return () => {
-			active = false;
-		};
-	}, [draftShopId]);
+	const retry = useRetryStatus();
 
 	// Restore files + settings from the saved draft so resuming (or coming back
-	// from shop selection) shows exactly what was persisted last.
+	// from shop selection) shows exactly what was persisted last. The cached
+	// copy shows first (offline too); a fresher one replaces it until the user
+	// starts editing.
+	const { data: savedDraft, isPending: draftPending } = useDraftQuery(draftId);
+	const hydrating = !!draftId && draftPending;
+	const userEdited = useRef(false);
 	useEffect(() => {
-		if (!draftId) return;
-		let active = true;
-		(async () => {
-			try {
-				const token = await SecureStore.getItemAsync("authToken");
-				const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-					headers: {
-						Authorization: `Bearer ${token}`,
-					},
-				});
-				if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-				const data = await response.json();
-				const draft = data.data?.draft || null;
-				if (!active || !draft) return;
-				const docs = documentsFromDraft(draft);
-				if (docs.length > 0) {
-					// Keep details the draft doesn't carry (e.g. the local file size
-					// passed from the upload screen); draft values win when present.
-					setParsedDocuments((prev) =>
-						docs.map((doc) => ({ ...prev.find((p) => p.fileId === doc.fileId), ...doc }))
-					);
-					setAllSegments(segmentsArrayFromDraft(draft));
-					setCurrentDocIndex(0);
-					setCurrentSegmentIndex(0);
-				}
-				const shopObj = draft.shop;
-				const shopId = shopObj?._id || (typeof shopObj === "string" ? shopObj : null);
-				if (shopId) {
-					setDraftShopId(shopId);
-					if (shopObj?.name) setShopName(shopObj.name);
-				}
-			} catch (e) {
-				console.error("Error loading draft settings:", e);
-			} finally {
-				if (active) setHydrating(false);
-			}
-		})();
-		return () => {
-			active = false;
-		};
-	}, [draftId]);
+		if (!savedDraft || userEdited.current) return;
+		const docs = documentsFromDraft(savedDraft);
+		if (docs.length > 0) {
+			// Keep details the draft doesn't carry (e.g. the local file size
+			// passed from the upload screen); draft values win when present.
+			setParsedDocuments((prev) => docs.map((doc) => ({ ...prev.find((p) => p.fileId === doc.fileId), ...doc })));
+			setAllSegments(segmentsArrayFromDraft(savedDraft));
+			setCurrentDocIndex(0);
+			setCurrentSegmentIndex(0);
+		}
+	}, [savedDraft]);
+
+	const savedShop = savedDraft?.shop;
+	const draftShopId = savedShop?._id || (typeof savedShop === "string" ? savedShop : null) || params.shopId || null;
+	const { data: draftShop } = useShopQuery(savedShop?.name ? null : draftShopId);
+	const shopName = savedShop?.name || draftShop?.name || null;
 
 	useEffect(() => {
 		if (!draftId && parsedDocuments.length === 0) {
@@ -212,6 +164,7 @@ const PrintSettings = () => {
 	//----------------------------------- SETTINGS MUTATIONS -----------------------------------//
 
 	const handleSettingsChange = (field, value) => {
+		userEdited.current = true;
 		setAllSegments((prev) => {
 			const updated = prev.map((segs) => segs.slice());
 			const seg = updated[currentDocIndex][safeSegmentIndex];
@@ -232,6 +185,7 @@ const PrintSettings = () => {
 	// Adds a page-range group seeded from the active segment's settings (so only
 	// the range and the fields you want to differ need changing).
 	const handleAddSegment = () => {
+		userEdited.current = true;
 		setAllSegments((prev) => {
 			const updated = prev.map((segs) => segs.slice());
 			updated[currentDocIndex] = [...updated[currentDocIndex], newSegment(currentSegments[safeSegmentIndex])];
@@ -241,6 +195,7 @@ const PrintSettings = () => {
 	};
 
 	const handleRemoveSegment = (index) => {
+		userEdited.current = true;
 		setAllSegments((prev) => {
 			const updated = prev.map((segs) => segs.slice());
 			updated[currentDocIndex] = updated[currentDocIndex].filter((_, i) => i !== index);
@@ -286,7 +241,6 @@ const PrintSettings = () => {
 		// split file becomes several entries sharing the same file id.
 		try {
 			setSubmitting(true);
-			const token = await SecureStore.getItemAsync("authToken");
 			const files = [];
 			allSegments.forEach((segs, docIndex) => {
 				segs.forEach((s) => {
@@ -305,52 +259,16 @@ const PrintSettings = () => {
 				});
 			});
 
-			const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-				method: "PUT",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ files }),
-			});
-
-			const data = await response.json();
-			if (!response.ok) {
-				throw new Error(data.message || "Failed to save settings.");
-			}
-
-			console.log("Draft updated with settings:", data);
+			// Saving and pricing are both safe to repeat, so they retry on their own.
+			await updateDraft(
+				draftId,
+				{ files, ...(draftShopId && { shop: draftShopId }) },
+				{ onRetry: retry.onRetry }
+			);
 
 			if (draftShopId) {
-				try {
-					await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-						method: "PUT",
-						headers: {
-							Authorization: `Bearer ${token}`,
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify({ shop: draftShopId }),
-					});
-				} catch (e) {
-					console.error("Could not update shop on draft:", e);
-				}
-
-				const checkResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}/check`, {
-					method: "PATCH",
-					headers: {
-						Authorization: `Bearer ${token}`,
-						"Content-Type": "application/json",
-					},
-				});
-				const checkData = await checkResponse.json();
-				if (!checkResponse.ok) {
-					throw new Error(checkData.message || "Failed to calculate cost.");
-				}
-				
-				router.push({
-					pathname: "/draft-details",
-					params: { draft: JSON.stringify(checkData.data.draft) },
-				});
+				const checked = await checkDraft(draftId, { onRetry: retry.onRetry });
+				router.push({ pathname: "/draft-details", params: { draftId: checked._id } });
 				return;
 			}
 
@@ -364,9 +282,10 @@ const PrintSettings = () => {
 			});
 		} catch (err) {
 			console.error("Error updating draft with settings:", err);
-			showAlert("Error", err.message || "Failed to save settings. Please try again.");
+			showAlert("Couldn't save settings", friendlyMessage(err, "Failed to save settings. Please try again."));
 		} finally {
 			setSubmitting(false);
+			retry.reset();
 		}
 	};
 
@@ -470,6 +389,7 @@ const PrintSettings = () => {
 					onContinue={isLastDocument ? handleContinue : handleProceedToNext}
 					continueText={isLastDocument ? "Review and continue" : "Proceed to next document"}
 					loading={submitting}
+					loadingText={retry.label}
 					error={null}
 				/>
 			)}

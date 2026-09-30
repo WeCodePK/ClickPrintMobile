@@ -6,15 +6,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Keyboard, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
-import config from "../config/config";
 import { colors } from "../constants/colors";
 import { useAuth } from "../context/auth";
 import { showAlert } from "../utils/alert";
+import { apiFetch, ApiError } from "../utils/api";
+import { friendlyMessage } from "../utils/errors";
 import SecureStore from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
-const API_BASE_URL = config.apiBaseUrl;
 
 const KEYBOARD_EXTRA_OFFSET = 20;
 const DEFAULT_CODE_LENGTH = 5;
@@ -130,31 +130,34 @@ const VerifyCode = () => {
 		if (verifying) return;
 		setVerifying(true);
 		try {
-			const response = await fetch(`${API_BASE_URL}/auth/verify`, {
+			// The backend accepts the same code again for a short while after a
+			// successful verify, so a response lost on a bad connection can be
+			// retried safely.
+			const body = await apiFetch("/auth/verify", {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ code, number: phoneNumber, actor: "user" }),
+				auth: false,
+				idempotent: true,
+				retries: 2,
+				body: { code, number: phoneNumber, actor: "user" },
 			});
-			const body = await response.json();
-			if (body.success) {
-				console.log(body);
-				await signIn(body.data.token, body.data.user)
-				console.log("OTP verified successfully for", phoneNumber);
+			await signIn(body.data.token, body.data.user);
+			console.log("OTP verified successfully for", phoneNumber);
 
-	 			if (body.data.user && body.data.user.name) {
-					await SecureStore.setItemAsync("name", body.data.user.name);
-					router.replace("/(tabs)/home");
-				} else {
-					router.replace("/profile-setup");
-				}
+			if (body.data.user && body.data.user.name) {
+				await SecureStore.setItemAsync("name", body.data.user.name);
+				router.replace("/(tabs)/home");
 			} else {
-				setShowErrorModal(true);
+				router.replace("/profile-setup");
 			}
 		} catch (error) {
 			console.error("Error verifying OTP:", error);
-			setShowErrorModal(true);
+			// A wrong or expired code gets the retry modal; a connection problem
+			// keeps the typed code so the user can just try again.
+			if (error instanceof ApiError && (error.kind === "auth" || error.kind === "client")) {
+				setShowErrorModal(true);
+			} else {
+				showAlert("Couldn't verify the code", friendlyMessage(error));
+			}
 		} finally {
 			setVerifying(false);
 		}
@@ -166,28 +169,22 @@ const VerifyCode = () => {
 		if (timer > 0 || resending) return;
 		setResending(true);
 		try {
-			const response = await fetch(`${API_BASE_URL}/auth/otp`, {
+			// Not retried automatically: each request texts a new code.
+			const data = await apiFetch("/auth/otp", {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ number: phoneNumber, intent: 'user' }),
+				auth: false,
+				retries: 0,
+				body: { number: phoneNumber, intent: "user" },
 			});
-			const data = await response.json();
-			if (data.success) {
-				const otpConfig = data.data?.config || {};
-				const newLength = otpConfig.codeLength != null ? parseCodeLength(otpConfig.codeLength) : codeLength;
-				setCodeLength(newLength);
-				setCodes(Array(newLength).fill(""));
-				setTimer(parseResendSeconds(otpConfig.resendInMs != null ? otpConfig.resendInMs : params.resendInMs));
-				inputRefs.current[0]?.focus();
-			} else {
-				showAlert("Error", "Failed to send OTP. Please try again.");
-				console.error("OTP request failed:", data.message);
-			}
+			const otpConfig = data?.data?.config || {};
+			const newLength = otpConfig.codeLength != null ? parseCodeLength(otpConfig.codeLength) : codeLength;
+			setCodeLength(newLength);
+			setCodes(Array(newLength).fill(""));
+			setTimer(parseResendSeconds(otpConfig.resendInMs != null ? otpConfig.resendInMs : params.resendInMs));
+			inputRefs.current[0]?.focus();
 		} catch (error) {
 			console.error("Error sending OTP:", error);
-			showAlert("Error", "An unexpected error occurred. Please try again.");
+			showAlert("Couldn't send a new code", friendlyMessage(error, "Failed to send OTP. Please try again."));
 		} finally {
 			setResending(false);
 		}

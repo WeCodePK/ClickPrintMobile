@@ -104,6 +104,8 @@ const DocumentSettingsForm = ({
 	onContinue,
 	continueText,
 	loading,
+	// Optional status next to the spinner, e.g. "Retrying (2/4)…".
+	loadingText,
 	error,
 }) => {
 	const extension = documentName.includes(".") ? documentName.split(".").pop().toUpperCase() : "FILE";
@@ -491,7 +493,10 @@ const DocumentSettingsForm = ({
 					disabled={isActionDisabled()}
 				>
 					{loading ? (
-						<ActivityIndicator size="small" color={colors.cardBackground} />
+						<>
+							<ActivityIndicator size="small" color={colors.cardBackground} />
+							{loadingText ? <Text style={styles.submitButtonText}>{loadingText}</Text> : null}
+						</>
 					) : (
 						<>
 							<Text style={styles.submitButtonText}>{continueText || "Review and continue"}</Text>

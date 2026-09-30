@@ -2,13 +2,15 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import SecureStore from "../../utils/storage";
 import { Image } from "expo-image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import StaleDataNotice from "../../components/StaleDataNotice";
 import config from "../../config/config";
 import { colors } from "../../constants/colors";
+import { useServicesQuery, useShopQuery } from "../../hooks/queries";
+import { friendlyMessage } from "../../utils/errors";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
@@ -34,10 +36,18 @@ const ShopDetails = () => {
 	const params = useLocalSearchParams();
 	const shopId = params.id || params.shopId;
 
-	const [shop, setShop] = useState(null);
-	const [services, setServices] = useState([]);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState(null);
+	// Cached (and saved on the device), so a shop seen before opens offline.
+	const shopQuery = useShopQuery(shopId);
+	const servicesQuery = useServicesQuery(shopId);
+	const shop = shopQuery.data ?? null;
+	const services = servicesQuery.data ?? [];
+	const loading = shopQuery.isPending;
+	const error = shopQuery.isError && !shop ? friendlyMessage(shopQuery.error) : null;
+	const refreshFailed = (shopQuery.isError || servicesQuery.isError) && !!shop;
+	const fetchShopDetails = () => {
+		shopQuery.refetch();
+		servicesQuery.refetch();
+	};
 
 	// Coming from the Shops tab pushes this screen onto the root stack; going
 	// "back" there can land the tabs navigator on its initial tab (Home)
@@ -60,47 +70,6 @@ const ShopDetails = () => {
 			return () => subscription.remove();
 		}, [goBack])
 	);
-
-	useEffect(() => {
-		fetchShopDetails();
-	}, [shopId]);
-
-	const fetchShopDetails = async () => {
-		try {
-			setLoading(true);
-			setError(null);
-			const token = await SecureStore.getItemAsync("authToken");
-			const [shopResponse, servicesResponse] = await Promise.all([
-				fetch(`${API_BASE_URL}/shops/${shopId}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				}),
-				fetch(`${API_BASE_URL}/services/${shopId}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				})
-			]);
-
-			if (!shopResponse.ok) {
-				throw new Error(`HTTP error! status: ${shopResponse.status}`);
-			}
-
-			const shopData = await shopResponse.json();
-			setShop(shopData.data.shop);
-
-			if (servicesResponse.ok) {
-				const servicesData = await servicesResponse.json();
-				setServices(servicesData.data?.services || []);
-			} else {
-				setServices([]);
-			}
-		} catch (err) {
-			console.error("Error fetching shop details:", err);
-			setError(err.message || "Failed to load shop details. Please try again.");
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	
 
 	//----------------------------------- RENDER -----------------------------------//
 
@@ -131,6 +100,13 @@ const ShopDetails = () => {
 			) : (
 				<>
 					<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+						<StaleDataNotice
+							error={refreshFailed ? friendlyMessage(shopQuery.error || servicesQuery.error) : null}
+							updatedAt={shopQuery.dataUpdatedAt}
+							hasData
+							onRetry={fetchShopDetails}
+							retrying={shopQuery.isFetching}
+						/>
 						{/* Shop Header Card */}
 						<View style={styles.shopHeaderCard}>
 							{shop.imageFile ? (

@@ -22,7 +22,13 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { fetchShop, queryKeys } from "../hooks/queries";
+import { queryClient } from "../lib/queryClient";
+import { createDraft } from "../services/drafts";
 import { showAlert } from "../utils/alert";
+import { ApiError } from "../utils/api";
+import { friendlyMessage } from "../utils/errors";
+import { newObjectId } from "../utils/objectId";
 import { extractShopIdFromPayload } from "../utils/qrPayload";
 import SecureStore from "../utils/storage";
 
@@ -36,6 +42,7 @@ const SCAN_BOX_SIZE = 260;
 const QRScanner = () => {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
+	const draftIdRef = useRef(null);
 	const [permission, requestPermission] = useCameraPermissions();
 	const [scanned, setScanned] = useState(false);
 	const [processing, setProcessing] = useState(false);
@@ -109,22 +116,31 @@ const QRScanner = () => {
 					return;
 				}
 
-				// Fetch the shop details
-				const shopRes = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				});
-
-				if (!shopRes.ok) {
-					setProcessing(false);
-					setScanError({
-						title: "Shop Not Found",
-						message: "The scanned QR code doesn't match any registered shop. Please try a different code.",
+				// Fetch the shop details (a shop seen before comes from the cache,
+				// so scanning works offline for known shops).
+				let shop;
+				try {
+					shop = await queryClient.fetchQuery({
+						queryKey: queryKeys.shop(shopId),
+						queryFn: ({ signal }) => fetchShop(shopId, { signal }),
+						staleTime: 5 * 60 * 1000,
 					});
+				} catch (err) {
+					setProcessing(false);
+					const notFound = err instanceof ApiError && err.kind === "client";
+					setScanError(
+						notFound
+							? {
+									title: "Shop Not Found",
+									message: "The scanned QR code doesn't match any registered shop. Please try a different code.",
+								}
+							: {
+									title: "Couldn't Look Up the Shop",
+									message: friendlyMessage(err),
+								}
+					);
 					return;
 				}
-
-				const shopData = await shopRes.json();
-				const shop = shopData.data?.shop || shopData.shop || shopData;
 
 				// Show the shop preview modal
 				setScannedShop(shop);
@@ -155,27 +171,17 @@ const QRScanner = () => {
 				return;
 			}
 
-			// Create a new draft for this shop
-			const draftRes = await fetch(`${API_BASE_URL}/drafts`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ shop: scannedShop._id }),
-			});
-
-			const draftData = await draftRes.json();
-
-			if (!draftRes.ok) {
-				throw new Error(draftData.message || "Failed to create draft.");
+			// Create a new draft for this shop. The id is made once per scanned
+			// shop, so tapping again after a failure can't create a second draft.
+			if (draftIdRef.current?.shop !== scannedShop._id) {
+				draftIdRef.current = { shop: scannedShop._id, id: newObjectId() };
 			}
-
-			const newDraftId = draftData.data?.draft?._id || draftData.draft?._id;
+			const draft = await createDraft({ id: draftIdRef.current.id, shop: scannedShop._id });
+			const newDraftId = draft._id;
 			router.replace(`/upload-document?draftId=${newDraftId}&shopId=${scannedShop._id}`);
 		} catch (err) {
 			console.error("Draft creation error:", err);
-			showAlert("Error", err.message || "Failed to start document upload.");
+			showAlert("Couldn't start a print job", friendlyMessage(err, "Failed to start document upload."));
 		} finally {
 			setShopLoading(false);
 		}

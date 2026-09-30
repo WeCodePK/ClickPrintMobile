@@ -2,9 +2,8 @@ import { Feather } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
-import config from "../../config/config";
 import { colors } from "../../constants/colors";
-import { getItemAsync } from "../../utils/storage";
+import { useShopQuery } from "../../hooks/queries";
 
 // Status pill colours follow ClickPrintDesktop's `.db-status--*` tones.
 const STATUS_CONFIG = {
@@ -104,26 +103,9 @@ const ActiveJobCard = ({ job, onPress, onCancel, isLast = false }) => {
 		bg: colors.background,
 	};
 
-	const [shopName, setShopName] = useState(job.shopName || "Print Job");
-
-	useEffect(() => {
-		const fetchShopName = async () => {
-			if (!job.shopId || job.shopName) return;
-			try {
-				const token = await getItemAsync("authToken");
-				const res = await fetch(`${config.apiBaseUrl}/shops/${job.shopId}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				});
-				const data = await res.json();
-				if (data.success && data.data?.shop?.name) {
-					setShopName(data.data.shop.name);
-				}
-			} catch (e) {
-				console.error("Error fetching shop name:", e);
-			}
-		};
-		fetchShopName();
-	}, [job.shopId, job.shopName]);
+	// Shared cached lookup, so many cards for the same shop cost one request.
+	const { data: shop } = useShopQuery(job.shopName ? null : job.shopId);
+	const shopName = job.shopName || shop?.name || "Print Job";
 
 	const fileLabel = `${job.fileCount} ${job.fileCount === 1 ? "file" : "files"}`;
 

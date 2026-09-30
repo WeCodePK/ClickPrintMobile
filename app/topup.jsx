@@ -17,15 +17,14 @@ import {
 	View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import config from "../config/config";
 import { colors } from "../constants/colors";
+import { useDraftQuery, useShopQuery } from "../hooks/queries";
+import { useRetryStatus } from "../hooks/useRetryStatus";
+import { submitDraft, updateDraft } from "../services/drafts";
 import { showAlert } from "../utils/alert";
-import { uploadFile } from "../utils/fileUpload";
-import { getItemAsync } from "../utils/storage";
-
-//----------------------------------- CONSTANTS -----------------------------------//
-
-const API_BASE_URL = config.apiBaseUrl;
+import { ApiError } from "../utils/api";
+import { friendlyMessage } from "../utils/errors";
+import { addUploads, clearScope, removeUpload, useUploads, waitForUpload } from "../utils/uploadManager";
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -34,60 +33,50 @@ const TopUpPage = () => {
 	const insets = useSafeAreaInsets();
 	const params = useLocalSearchParams();
 
-	let draft = null;
-	if (params.draft) {
-		try {
-			draft = JSON.parse(params.draft);
-		} catch (e) {
-			console.error("Failed to parse draft param:", e);
-		}
-	}
-
-	const draftId = params.draftId || draft?._id || "";
+	const draftId = params.draftId || "";
+	// Cached, so the amount and wallet show after a reload or offline too.
+	const { data: draft } = useDraftQuery(draftId || null);
 	const shopId = params.shopId || draft?.shop?._id || (typeof draft?.shop === "string" ? draft.shop : "");
 	const amount = params.amount || String(draft?.cost?.total ?? "0");
 
-	const [shop, setShop] = useState(null);
-	const [wallet, setWallet] = useState(null);
-	const [loadingShop, setLoadingShop] = useState(!!shopId);
+	const shopQuery = useShopQuery(shopId || null);
+	const shop = shopQuery.data ?? null;
+	const wallet = shop?.wallet ?? null;
+	const loadingShop = !!shopId && shopQuery.isPending;
+	// The wallet couldn't be loaded (offline, timeout, server error); the user
+	// needs it to pay, so show a retry instead of empty fields.
+	const shopLoadFailed = !shop && shopQuery.isError && !shopQuery.isFetching;
+	const fetchShopDetails = () => shopQuery.refetch();
 
 	const [pickedImage, setPickedImage] = useState(null);
 	const [uploading, setUploading] = useState(false);
+	// Status of the running upload, e.g. "Uploading 40%" or "Waiting for connection".
+	const [uploadStatus, setUploadStatus] = useState(null);
+	// Set once the proof is uploaded AND attached to the draft.
 	const [uploadedFile, setUploadedFile] = useState(null);
+	// The proof goes through the app-wide upload manager: it resumes after a
+	// dropped connection or reload, and if only attaching it to the draft
+	// fails, retrying doesn't upload the image again.
+	const proofScope = `proof:${draftId}`;
+	const proofUploads = useUploads(proofScope);
+	const proofUpload = proofUploads[proofUploads.length - 1] || null;
+
+	// Coming back to this screen (or after a reload) with a proof already on
+	// its way: show it again, and count it as done if the draft already has it.
+	useEffect(() => {
+		if (pickedImage || !proofUpload) return;
+		setPickedImage({ uri: "", fileName: proofUpload.name });
+		const draftProof = draft?.paymentProofFile?._id ?? draft?.paymentProofFile;
+		if (proofUpload.status === "success" && draftProof && draftProof === proofUpload.file?._id) {
+			setUploadedFile(proofUpload.file);
+		}
+	}, [pickedImage, proofUpload, draft]);
 
 	const [submittingJob, setSubmittingJob] = useState(false);
+	const retry = useRetryStatus();
 	const [copied, setCopied] = useState(false);
 
 	// Fetch shop and wallet details via /api/shops/:shopId
-	useEffect(() => {
-		const fetchShopDetails = async () => {
-			if (!shopId) return;
-			try {
-				setLoadingShop(true);
-				const token = await getItemAsync("authToken");
-				const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				});
-				if (response.ok) {
-					const data = await response.json();
-					const shopData = data.data?.shop || data.data;
-					if (shopData) {
-						setShop(shopData);
-						if (shopData.wallet) {
-							setWallet(shopData.wallet);
-						}
-					}
-				}
-			} catch (err) {
-				console.error("Failed to fetch shop details:", err);
-			} finally {
-				setLoadingShop(false);
-			}
-		};
-
-		fetchShopDetails();
-	}, [shopId]);
-
 	// Copy account number
 	const handleCopyNumber = async () => {
 		const num = wallet?.number;
@@ -118,6 +107,7 @@ const TopUpPage = () => {
 			if (!result.canceled && result.assets?.length > 0) {
 				setPickedImage(result.assets[0]);
 				setUploadedFile(null);
+				clearScope(proofScope);
 			}
 		} catch (err) {
 			console.error("Error picking proof:", err);
@@ -137,45 +127,43 @@ const TopUpPage = () => {
 		}
 		try {
 			setUploading(true);
-			const token = await getItemAsync("authToken");
-			const mimeType = pickedImage.mimeType || "image/jpeg";
-			// The backend needs the extension in the name. Web picks give a
-			// data:/blob: uri, so fall back to the mime subtype there.
-			const uriExt = pickedImage.uri.split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1];
-			const fileName =
-				pickedImage.fileName || `payment-proof.${uriExt || mimeType.split("/")[1] || "jpg"}`;
-
-			let source;
-			if (Platform.OS === "web") {
-				source = pickedImage.file || (await (await fetch(pickedImage.uri)).blob());
-			} else {
-				source = { uri: pickedImage.uri, name: fileName, type: mimeType };
+			let uploadId = proofUpload?.id;
+			if (!uploadId || proofUpload.status === "failed") {
+				if (uploadId) removeUpload(uploadId);
+				const mimeType = pickedImage.mimeType || "image/jpeg";
+				// The backend needs the extension in the name. Web picks give a
+				// data:/blob: uri, so fall back to the mime subtype there.
+				const uriExt = pickedImage.uri.split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1];
+				const fileName =
+					pickedImage.fileName || `payment-proof.${uriExt || mimeType.split("/")[1] || "jpg"}`;
+				[uploadId] = await addUploads(proofScope, [
+					{ name: fileName, mimeType, size: pickedImage.fileSize, uri: pickedImage.uri, file: pickedImage.file },
+				]);
 			}
+			const fileRecord = await waitForUpload(uploadId, (item) =>
+				setUploadStatus(
+					item.status === "waiting"
+						? "Waiting for connection…"
+						: item.status === "processing"
+							? "Processing…"
+							: `Uploading ${Math.round((item.progress ?? 0) * 100)}%`
+				)
+			);
+			setUploadStatus("Attaching…");
 
-			const { promise } = uploadFile(source, { name: fileName, mimeType, token });
-			const fileRecord = await promise;
-
-			// Attach the proof to the draft right away via /api/drafts/:draftId
-			const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-				method: "PUT",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ paymentProofFile: fileRecord._id }),
-			});
-			const updateData = await updateResponse.json();
-			if (!updateResponse.ok) {
-				throw new Error(updateData.message || "Failed to attach payment proof to your draft.");
-			}
+			// Attach the proof to the draft right away (safe to repeat, so it retries).
+			await updateDraft(draftId, { paymentProofFile: fileRecord._id });
 
 			setUploadedFile(fileRecord);
 			showAlert("Proof Uploaded", "Payment proof uploaded successfully! You can now submit your job.");
 		} catch (err) {
 			console.error("Error uploading payment proof:", err);
-			showAlert("Upload Failed", err.message || "Failed to upload payment proof. Please try again.");
+			// Upload errors are already user-facing; request errors get mapped.
+			const message = err instanceof ApiError ? friendlyMessage(err, "Failed to attach payment proof to your draft.") : err.message;
+			showAlert("Upload Failed", message || "Failed to upload payment proof. Please try again.");
 		} finally {
 			setUploading(false);
+			setUploadStatus(null);
 		}
 	};
 
@@ -196,33 +184,22 @@ const TopUpPage = () => {
 
 		try {
 			setSubmittingJob(true);
-			const token = await getItemAsync("authToken");
-			console.log("Submitting draft ID:", draftId);
-			const response = await fetch(`${API_BASE_URL}/drafts/${draftId}/submit`, {
-				method: "PATCH",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
+			// submitDraft checks whether a lost attempt went through before
+			// retrying, so a bad connection can't create the job twice.
+			await submitDraft(draftId, "upfront", { onRetry: retry.onRetry });
+			clearScope(proofScope);
+			showAlert("Success", "Your print job has been submitted!", [
+				{
+					text: "OK",
+					onPress: () => router.replace("/(tabs)/home"),
 				},
-				body: JSON.stringify({ paymentMethod: "upfront" }),
-			});
-			const data = await response.json();
-			if (response.ok && data.success) {
-				showAlert("Success", "Your print job has been submitted!", [
-					{
-						text: "OK",
-						onPress: () => router.replace("/(tabs)/home"),
-					},
-				]);
-			} else {
-				console.log("Failed to submit draft response:", data);
-				throw new Error(data.message || "Failed to submit job.");
-			}
+			]);
 		} catch (err) {
 			console.error("Error submitting job:", err);
-			showAlert("Error", err.message || "Failed to submit draft. Please try again.");
+			showAlert("Couldn't submit the job", friendlyMessage(err, "Failed to submit draft. Please try again."));
 		} finally {
 			setSubmittingJob(false);
+			retry.reset();
 		}
 	};
 
@@ -276,6 +253,16 @@ const TopUpPage = () => {
 						<View style={styles.loadingShopBox}>
 							<ActivityIndicator size="small" color={colors.primary} />
 							<Text style={styles.loadingShopText}>Loading shop wallet details...</Text>
+						</View>
+					) : shopLoadFailed ? (
+						<View style={styles.loadingShopBox}>
+							<Feather name="wifi-off" size={20} color={colors.dangerDark} />
+							<Text style={styles.loadingShopText}>
+								Couldn&apos;t load the shop&apos;s account details. Check your connection.
+							</Text>
+							<TouchableOpacity style={styles.walletRetryButton} onPress={fetchShopDetails} activeOpacity={0.7}>
+								<Text style={styles.walletRetryText}>Retry</Text>
+							</TouchableOpacity>
 						</View>
 					) : (
 						<>
@@ -384,7 +371,10 @@ const TopUpPage = () => {
 							activeOpacity={0.8}
 						>
 							{uploading ? (
-								<ActivityIndicator size="small" color={colors.cardBackground} />
+								<>
+									<ActivityIndicator size="small" color={colors.cardBackground} />
+									{uploadStatus && <Text style={styles.uploadButtonText}>{uploadStatus}</Text>}
+								</>
 							) : (
 								<>
 									<Feather name="upload" size={18} color={colors.cardBackground} />
@@ -417,7 +407,10 @@ const TopUpPage = () => {
 					activeOpacity={0.8}
 				>
 					{submittingJob ? (
-						<ActivityIndicator size="small" color={colors.cardBackground} />
+						<>
+							<ActivityIndicator size="small" color={colors.cardBackground} />
+							{retry.label && <Text style={styles.submitJobButtonText}>{retry.label}</Text>}
+						</>
 					) : (
 						<>
 							<Text style={styles.submitJobButtonText}>Submit Job</Text>
@@ -557,6 +550,18 @@ const styles = StyleSheet.create({
 	loadingShopText: {
 		fontSize: 13,
 		color: colors.textSecondary,
+		textAlign: "center",
+	},
+	walletRetryButton: {
+		backgroundColor: colors.primary,
+		paddingHorizontal: 20,
+		paddingVertical: 8,
+		borderRadius: 8,
+	},
+	walletRetryText: {
+		color: colors.cardBackground,
+		fontWeight: "600",
+		fontSize: 14,
 	},
 	fieldLabel: {
 		fontSize: 11,

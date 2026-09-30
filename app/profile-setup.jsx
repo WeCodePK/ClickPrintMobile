@@ -6,15 +6,15 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import DismissKeyboard from "../components/DismissKeyboard";
-import config from "../config/config";
 import { colors } from "../constants/colors";
 import { useAuth } from "../context/auth";
 import { showAlert } from "../utils/alert";
+import { apiFetch } from "../utils/api";
+import { friendlyMessage, isConnectionError } from "../utils/errors";
 import SecureStore from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
-const API_BASE_URL = config.apiBaseUrl;
 const KEYBOARD_EXTRA_OFFSET = 20;
 
 //----------------------------------- COMPONENTS -----------------------------------//
@@ -69,32 +69,17 @@ const ProfileSetup = () => {
 		setLoading(true);
 
 		try {
-			const token = await SecureStore.getItemAsync("authToken");
 			const userId = await SecureStore.getItemAsync("userId");
-
-			const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
-				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${token}`,
-				},
-				body: JSON.stringify({ name: trimmedName }),
-			});
-
-			const data = await response.json();
-
-			if (response.ok) {
-				await completeProfile(data.data.user.name);
-				router.replace("/(tabs)/home");
-			} else {
-				showAlert("Error", data.message || "Failed to save profile. Please try again.");
-			}
+			// Setting a name is safe to repeat, so it retries on its own.
+			const data = await apiFetch(`/users/${userId}`, { method: "PUT", body: { name: trimmedName } });
+			await completeProfile(data.data.user.name);
+			router.replace("/(tabs)/home");
 		} catch (error) {
 			console.error("Profile setup error:", error);
-			if (error.message === "Network request failed") {
-				showAlert("No Internet", "Please check your internet connection and try again.");
+			if (isConnectionError(error)) {
+				showAlert("No Internet", friendlyMessage(error));
 			} else {
-				showAlert("Error", "An unexpected error occurred. Please try again.");
+				showAlert("Couldn't save your name", friendlyMessage(error, "Failed to save profile. Please try again."));
 			}
 		} finally {
 			setLoading(false);

@@ -4,9 +4,10 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import SecureStore from "../../utils/storage";
 import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { createDraft } from "../../services/drafts";
 import { showAlert } from "../../utils/alert";
+import { friendlyMessage } from "../../utils/errors";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ShopsMap from "../../components/ShopsMap";
 import { colors } from "../../constants/colors";
@@ -74,26 +75,11 @@ const ShopsPage = () => {
 		if (!shopId) return;
 		try {
 			setCreatingDraftForShop(shopId);
-			const token = await SecureStore.getItemAsync("authToken");
-			const draftResponse = await fetch(`${API_BASE_URL}/drafts`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ shop: shopId }),
-			});
-			const draftData = await draftResponse.json();
-
-			if (!draftResponse.ok) {
-				throw new Error(draftData.message || "Failed to create draft.");
-			}
-
-			const newDraftId = draftData.data.draft._id;
-			router.push(`/upload-document?draftId=${newDraftId}`);
+			const draft = await createDraft({ shop: shopId });
+			router.push(`/upload-document?draftId=${draft._id}`);
 		} catch (err) {
 			console.error(err);
-			showAlert("Error", "Failed to start document upload.");
+			showAlert("Couldn't start a print job", friendlyMessage(err, "Failed to start document upload."));
 		} finally {
 			setCreatingDraftForShop(null);
 		}

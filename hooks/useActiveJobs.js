@@ -4,7 +4,7 @@ import { useJobs } from "./useJobs";
 const ACTIVE_STATUSES = ["submitted", "printing", "queued"];
 
 export const useActiveJobs = () => {
-	const { jobs, loading, error, refreshing, refresh, reload } = useJobs();
+	const { jobs, loading, error, refreshing, refresh, reload, updatedAt } = useJobs();
 
 	const { activeJobs, inactiveJobs } = useMemo(() => {
 		const active = [];
@@ -28,5 +28,6 @@ export const useActiveJobs = () => {
 		refreshing,
 		refresh,
 		reload,
+		updatedAt,
 	};
 };

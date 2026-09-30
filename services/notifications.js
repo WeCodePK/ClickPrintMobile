@@ -2,9 +2,8 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import SecureStore from "../utils/storage";
 import Constants from "expo-constants";
-import config from "../config/config";
-
-const API_BASE_URL = config.apiBaseUrl;
+import { apiFetch, isTransientError } from "../utils/api";
+import { onOnlineChange } from "../utils/network";
 
 // SecureStore keys
 const PERMISSION_LAST_ASKED_KEY = "notifPermissionLastAsked"; // timestamp (ms) of last system prompt
@@ -103,33 +102,39 @@ export async function registerForPushNotifications({ forceAsk = false } = {}) {
     }
 }
 
+// Registers the push token with the backend. Returns true on success. When
+// it fails because of the connection, it tries again once the connection
+// returns (at most one pending retry at a time).
+let pendingRetry = null;
+
 export async function sendPushTokenToBackend(expoPushToken) {
-    if (!expoPushToken) return;
+    if (!expoPushToken) return false;
 
     const authToken = await SecureStore.getItemAsync("authToken");
     if (!authToken) {
         console.log("No auth token found, skipping push token registration");
-        return;
+        return false;
     }
-    console.log("I am being hit...!");
     try {
-        const response = await fetch(`${API_BASE_URL}/profile/pushTokens`, {
+        await apiFetch("/profile/pushTokens", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${authToken}`,
-            },
-            body: JSON.stringify({ expoPushToken }),
+            body: { expoPushToken },
+            // Registering the same token twice is harmless.
+            idempotent: true,
         });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log("Push token registered with backend:", data);
-        return data;
+        pendingRetry?.();
+        pendingRetry = null;
+        return true;
     } catch (e) {
         console.log(`Failed to send push token to backend: ${e}`);
+        if (isTransientError(e) && !pendingRetry) {
+            pendingRetry = onOnlineChange((online) => {
+                if (!online) return;
+                pendingRetry?.();
+                pendingRetry = null;
+                sendPushTokenToBackend(expoPushToken);
+            });
+        }
+        return false;
     }
 }

@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { ActivityIndicator, Modal, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import PullToRefreshScrollView from "../../components/PullToRefreshScrollView";
+import StaleDataNotice from "../../components/StaleDataNotice";
 import { colors } from "../../constants/colors";
 import { useTransactions } from "../../hooks/useTransactions";
 import { formatDate } from "../../utils/helper";
@@ -47,7 +48,7 @@ const webDateInputStyle = {
 
 const PrintHistory = () => {
 	const router = useRouter();
-	const { transactions: backendTransactions, loading, error, refreshing, refresh } = useTransactions();
+	const { transactions: backendTransactions, loading, error, refreshing, refresh, updatedAt } = useTransactions();
 
 	const [filterModalVisible, setFilterModalVisible] = useState(false);
 	const [sortModalVisible, setSortModalVisible] = useState(false);
@@ -137,7 +138,8 @@ const PrintHistory = () => {
 		);
 	}
 
-	if (error) {
+	// Full-screen error only when there's nothing saved to show.
+	if (error && backendTransactions.length === 0) {
 		return (
 			<SafeAreaView style={styles.container} edges={["top"]}>
 				<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
@@ -198,6 +200,13 @@ const PrintHistory = () => {
 				refreshing={refreshing}
 				onRefresh={refresh}
 			>
+				<StaleDataNotice
+					error={error}
+					updatedAt={updatedAt}
+					hasData={backendTransactions.length > 0}
+					onRetry={refresh}
+					retrying={refreshing}
+				/>
 				{filteredAndSortedTransactions.length === 0 ? (
 					<View style={styles.emptyContainer}>
 						<Feather name="inbox" size={48} color={colors.textSecondary} />
@@ -207,7 +216,7 @@ const PrintHistory = () => {
 					<TransactionList
 						transactions={filteredAndSortedTransactions}
 						onTransactionPress={(t) =>
-							router.push({ pathname: "/job-details", params: { transaction: JSON.stringify(t) } })
+							router.push({ pathname: "/job-details", params: { id: t.id } })
 						}
 					/>
 				)}

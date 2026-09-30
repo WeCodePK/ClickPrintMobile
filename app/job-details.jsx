@@ -3,13 +3,16 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import PullToRefreshScrollView from "../components/PullToRefreshScrollView";
 import config from "../config/config";
 import { colors } from "../constants/colors";
-import { fetchTransactions } from "../services/fetchTransactions";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys, transformTransaction, useJobQuery, useShopQuery } from "../hooks/queries";
+import { cancelJob } from "../services/drafts";
+import { friendlyMessage } from "../utils/errors";
 import showAlert from "../utils/alert";
 import SecureStore from "../utils/storage";
 
@@ -74,13 +77,36 @@ const TransactionDetails = () => {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
 	const params = useLocalSearchParams();
-	const transaction = JSON.parse(params.transaction);
+	// Screens navigate here with just the job id; the job itself comes from the
+	// cache (jobs or history list), so it opens instantly, offline, and after a
+	// reload. `transaction` (a job JSON) is still accepted from older links.
+	const jobId = params.id || (() => {
+		try {
+			return JSON.parse(params.transaction)?.id;
+		} catch {
+			return null;
+		}
+	})();
+	const queryClient = useQueryClient();
+	const findCachedJob = () =>
+		[...(queryClient.getQueryData(queryKeys.jobs) || []), ...(queryClient.getQueryData(queryKeys.history) || [])].find(
+			(j) => j._id === jobId
+		);
+	const jobQuery = useJobQuery(jobId, {
+		initialData: findCachedJob,
+		initialDataUpdatedAt: () => queryClient.getQueryState(queryKeys.jobs)?.dataUpdatedAt,
+		// Finished jobs can't change, so they're never refetched.
+		staleTime: (query) => (FINAL_STATUSES.includes(query.state.data?.status) ? Infinity : 0),
+	});
+	// Raw backend job, and the list-shaped copy the render code reads from.
+	const job = jobQuery.data ?? null;
+	const transaction = useMemo(() => (job ? transformTransaction(job) : {}), [job]);
+	const jobStatus = job?.status;
+	const { data: shop } = useShopQuery(job?.shop?.name ? null : transaction.shopId);
+	const shopName = job?.shop?.name || shop?.name || "Print Job";
+	const shopImageUrl = shop?.imageUrl ?? null;
 
-	const [shopName, setShopName] = useState("Print Job");
-	const [shopImageUrl, setShopImageUrl] = useState(null);
 	const [cancelling, setCancelling] = useState(false);
-	const [jobStatus, setJobStatus] = useState(transaction.status);
-	const [job, setJob] = useState(null);
 	const [showMoreDetails, setShowMoreDetails] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
 
@@ -123,27 +149,12 @@ const TransactionDetails = () => {
 					onPress: async () => {
 						try {
 							setCancelling(true);
-							const token = await SecureStore.getItemAsync("authToken");
-							const res = await fetch(
-								`${config.apiBaseUrl}/jobs/${transaction.id}/status`,
-								{
-									method: "PATCH",
-									headers: {
-										"Content-Type": "application/json",
-										Authorization: `Bearer ${token}`,
-									},
-									body: JSON.stringify({ status: "cancelled" }),
-								}
-							);
-							const data = await res.json();
-							if (res.ok && data.success !== false) {
-								setJobStatus("cancelled");
-							} else {
-								showAlert("Error", data.message || "Failed to cancel the job.");
-							}
+							await cancelJob(jobId);
+							queryClient.setQueryData(queryKeys.job(jobId), (old) => old && { ...old, status: "cancelled" });
+							jobQuery.refetch();
 						} catch (e) {
 							console.error("Error cancelling job:", e);
-							showAlert("Error", "Something went wrong. Please try again.");
+							showAlert("Couldn't cancel the job", friendlyMessage(e, "Failed to cancel the job."));
 						} finally {
 							setCancelling(false);
 						}
@@ -153,64 +164,9 @@ const TransactionDetails = () => {
 		);
 	};
 
-	useEffect(() => {
-		const fetchShopName = async () => {
-			if (!transaction.shopId) return;
-			try {
-				const token = await SecureStore.getItemAsync("authToken");
-				const res = await fetch(`${config.apiBaseUrl}/shops/${transaction.shopId}`, {
-					headers: { Authorization: `Bearer ${token}` }
-				});
-				const data = await res.json();
-				if (data.success && data.data?.shop?.name) {
-					setShopName(data.data.shop.name);
-				}
-				if (data.success && data.data?.shop?.imageUrl) {
-					setShopImageUrl(data.data.shop.imageUrl);
-				}
-			} catch (e) {
-				console.error("Error fetching shop name:", e);
-			}
-		};
-		fetchShopName();
-	}, [transaction.shopId]);
-
-	const fetchJob = useCallback(async () => {
-		if (!transaction.id) return;
-		try {
-			const token = await SecureStore.getItemAsync("authToken");
-			const res = await fetch(`${config.apiBaseUrl}/jobs/${transaction.id}`, {
-				headers: { Authorization: `Bearer ${token}` },
-			});
-			let fetchedJob = null;
-			if (res.ok) {
-				const data = await res.json();
-				fetchedJob = data.data?.job ?? null;
-			} else if (res.status === 404) {
-				// Once a job is completed, cancelled or failed the backend moves it out
-				// of Jobs into History (keeping its _id), so look for it there instead.
-				const history = await fetchTransactions();
-				fetchedJob = history.find((h) => h._id === transaction.id) ?? null;
-			}
-			if (fetchedJob) {
-				setJob(fetchedJob);
-				setJobStatus(fetchedJob.status);
-				if (fetchedJob.shop?.name) setShopName(fetchedJob.shop.name);
-			}
-		} catch (e) {
-			console.error("Error fetching job:", e);
-		}
-	}, [transaction.id]);
-
-	// Finished jobs come from History with everything already filled in, so only
-	// jobs still in progress need fetching fresh.
-	useEffect(() => {
-		if (!FINAL_STATUSES.includes(transaction.status)) fetchJob();
-	}, [fetchJob, transaction.status]);
-
 	const handleRefresh = async () => {
 		setRefreshing(true);
-		await fetchJob();
+		await jobQuery.refetch();
 		setRefreshing(false);
 	};
 
@@ -231,6 +187,39 @@ const TransactionDetails = () => {
 	};
 
 	//----------------------------------- RENDER -----------------------------------//
+
+	if (!job && jobQuery.isPending && jobId) {
+		return (
+			<SafeAreaView style={styles.container} edges={["top"]}>
+				<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+				<View style={styles.unavailable}>
+					<ActivityIndicator size="large" color={colors.primary} />
+				</View>
+			</SafeAreaView>
+		);
+	}
+
+	if (!job) {
+		return (
+			<SafeAreaView style={styles.container} edges={["top"]}>
+				<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+				<View style={styles.header}>
+					<TouchableOpacity onPress={() => router.replace("/(tabs)/home")} style={styles.backButton}>
+						<Feather name="arrow-left" size={24} color={colors.textPrimary} />
+					</TouchableOpacity>
+					<Text style={styles.headerTitle}>Job Details</Text>
+					<View style={styles.placeholder} />
+				</View>
+				<View style={styles.unavailable}>
+					<Text style={styles.unavailableText}>
+						{jobQuery.isError
+							? friendlyMessage(jobQuery.error, "This job couldn't be loaded.")
+							: "This job couldn't be found. Go back and open it again from your jobs."}
+					</Text>
+				</View>
+			</SafeAreaView>
+		);
+	}
 
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
@@ -602,6 +591,17 @@ const JobProgress = ({ status, color }) => {
 //----------------------------------- STYLES -----------------------------------//
 
 const styles = StyleSheet.create({
+	unavailable: {
+		flex: 1,
+		justifyContent: "center",
+		alignItems: "center",
+		padding: 32,
+	},
+	unavailableText: {
+		fontSize: 15,
+		color: colors.textSecondary,
+		textAlign: "center",
+	},
 	container: {
 		flex: 1,
 		backgroundColor: colors.background,

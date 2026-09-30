@@ -22,11 +22,11 @@ self.addEventListener("activate", (event) => {
 	event.waitUntil(
 		(async () => {
 			// Drop any caches left behind by the production worker (sw.js) so a
-			// dev session on the same origin never serves stale content. Shared
-			// files waiting for the upload screen are kept.
+			// dev session on the same origin never serves stale content. App
+			// data caches (see share-target.js) are kept.
 			const keys = await caches.keys();
 			await Promise.all(
-				keys.filter((key) => key !== SHARED_FILES_CACHE).map((key) => caches.delete(key))
+				keys.filter((key) => !APP_DATA_CACHES.includes(key)).map((key) => caches.delete(key))
 			);
 			await self.clients.claim();
 		})()

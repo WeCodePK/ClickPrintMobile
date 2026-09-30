@@ -6,17 +6,36 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import config from "../config/config";
 import { colors } from "../constants/colors";
-import { uploadFile } from "../utils/fileUpload";
+import { useDraftQuery, useShopQuery } from "../hooks/queries";
+import { useRetryStatus } from "../hooks/useRetryStatus";
+import { createDraft, updateDraft } from "../services/drafts";
+import { friendlyMessage } from "../utils/errors";
+import { addUploads, clearScope, removeUpload, retryUpload, useUploads } from "../utils/uploadManager";
+import { newObjectId } from "../utils/objectId";
 import { takeSharedFiles } from "../utils/sharedFiles";
-import SecureStore from "../utils/storage";
 import DocumentCard from "./components/uploadDocument/DocumentCard";
 import DocumentPreviewModal from "./components/uploadDocument/DocumentPreviewModal";
 
-//----------------------------------- CONSTANTS ------------------------------------//
+//----------------------------------- HELPERS -----------------------------------//
 
-const API_BASE_URL = config.apiBaseUrl;
+// An upload manager item (utils/uploadManager.js) in the shape DocumentCard
+// and the rest of this screen use.
+const uploadToDocument = (item) => ({
+	id: item.id,
+	file: {
+		name: item.name,
+		size: item.size,
+		mimeType: item.mimeType,
+		numberOfPages: item.file?.numberOfPages,
+	},
+	name: item.name.replace(/\.[^/.]+$/, "") || "Document",
+	fileId: item.file?._id,
+	// "processing" is the last stage of uploading (the server converting it).
+	status: item.status === "processing" ? "uploading" : item.status,
+	progress: item.status === "processing" ? 1 : item.progress,
+	errorMessage: item.errorMessage,
+});
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -26,108 +45,62 @@ const UploadDocument = () => {
 	// `share` is set by the service worker when a share brought no files
 	// (see public/share-target.js).
 	const { draftId, share, received, shopId } = useLocalSearchParams();
-	const [documents, setDocuments] = useState([]);
+	// Files already in the draft (when resuming one), and files uploading in
+	// this print job. Uploads live in the app-wide upload manager, so they keep
+	// going when this screen closes and resume after a reload or restart.
+	const [existingDocs, setExistingDocs] = useState([]);
+	const scope = draftId ? `draft:${draftId}` : "new";
+	const uploads = useUploads(scope);
 	const [picking, setPicking] = useState(false);
 	const [uploading, setUploading] = useState(false);
-	const [hydrating, setHydrating] = useState(!!draftId);
+
 	const [error, setError] = useState(null);
 	const [previewDoc, setPreviewDoc] = useState(null);
-	const [attachedShop, setAttachedShop] = useState(null);
-	// Abort handles for in-flight uploads, keyed by document id.
-	const abortersRef = useRef({});
 
-	// Load shop info if shopId is passed as query param or draft has a shop
+	// The id for a new draft is made once, so pressing Continue again after a
+	// failure retries the same draft instead of creating another.
+	const newDraftIdRef = useRef(null);
+	const retry = useRetryStatus();
+
+	// Resuming an existing draft: show its already-uploaded files. We only have
+	// their names/ids (not the original bytes), which is enough to display them
+	// and keep them in the draft unless the user removes or adds files. The
+	// cached copy shows first, so this works offline too.
+	const draftQuery = useDraftQuery(draftId || null);
+	const savedDraft = draftQuery.data;
+	const hydrating = !!draftId && draftQuery.isPending;
+	const hydrated = useRef(false);
 	useEffect(() => {
-		const targetShopId = shopId;
-		if (!targetShopId) return;
-		let active = true;
-		(async () => {
-			try {
-				const token = await SecureStore.getItemAsync("authToken");
-				const res = await fetch(`${API_BASE_URL}/shops/${targetShopId}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				});
-				if (res.ok) {
-					const data = await res.json();
-					const shop = data.data?.shop || data.shop;
-					if (active && shop) setAttachedShop(shop);
-				}
-			} catch (e) {
-				console.error("Could not fetch attached shop info:", e);
-			}
-		})();
-		return () => {
-			active = false;
-		};
-	}, [shopId]);
-
-	// Stop in-flight uploads when leaving the screen.
+		if (!savedDraft || hydrated.current) return;
+		hydrated.current = true;
+		const docs = (savedDraft.files || []).map((f) => {
+			const originalName = f.file?.name || "Document";
+			const fileId = f.file?._id || f.file;
+			return {
+				id: fileId,
+				// Synthetic file object so DocumentCard can show the name/extension/pages.
+				file: { name: originalName, numberOfPages: f.file?.numberOfPages },
+				name: originalName.replace(/\.[^/.]+$/, "") || "Document",
+				fileId,
+				settings: f.settings || {},
+				existing: true,
+				status: "idle",
+			};
+		});
+		// A split file appears once per segment; list it once.
+		setExistingDocs(docs.filter((doc, i) => docs.findIndex((d) => d.id === doc.id) === i));
+	}, [savedDraft]);
 	useEffect(() => {
-		const aborters = abortersRef.current;
-		return () => Object.values(aborters).forEach((abort) => abort());
-	}, []);
+		if (draftId && draftQuery.isError && !savedDraft) {
+			setError(friendlyMessage(draftQuery.error, "Failed to load the saved documents. Please try again."));
+		}
+	}, [draftId, draftQuery.isError, draftQuery.error, savedDraft]);
 
-	// Resuming an existing draft: pull the already-uploaded files from the
-	// backend so they show up here. We only have their names/ids (not the
-	// original bytes), which is enough to display them and keep them in the
-	// draft unless the user removes or adds files.
-	useEffect(() => {
-		if (!draftId) return;
-		let active = true;
-		(async () => {
-			try {
-				const token = await SecureStore.getItemAsync("authToken");
-				const response = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-					headers: {
-						Authorization: `Bearer ${token}`,
-					},
-				});
-				if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-				const data = await response.json();
-				const draft = data.data?.draft || null;
-				if (!active || !draft) return;
-
-				if (draft.shop) {
-					if (typeof draft.shop === "object" && draft.shop.name) {
-						setAttachedShop(draft.shop);
-					} else if (typeof draft.shop === "string") {
-						const res = await fetch(`${API_BASE_URL}/shops/${draft.shop}`, {
-							headers: { Authorization: `Bearer ${token}` },
-						});
-						if (res.ok) {
-							const sData = await res.json();
-							const s = sData.data?.shop || sData.shop;
-							if (active && s) setAttachedShop(s);
-						}
-					}
-				}
-
-				const existingDocs = (draft.files || []).map((f) => {
-					const originalName = f.file?.name || "Document";
-					const fileId = f.file?._id || f.file;
-					return {
-						id: fileId,
-						// Synthetic file object so DocumentCard can show the name/extension/pages.
-						file: { name: originalName, numberOfPages: f.file?.numberOfPages },
-						name: originalName.replace(/\.[^/.]+$/, "") || "Document",
-						fileId,
-						settings: f.settings || {},
-						existing: true,
-						status: "idle",
-					};
-				});
-				setDocuments(existingDocs);
-			} catch (err) {
-				console.error("Error loading draft files:", err);
-				setError("Failed to load the saved documents. Please try again.");
-			} finally {
-				if (active) setHydrating(false);
-			}
-		})();
-		return () => {
-			active = false;
-		};
-	}, [draftId]);
+	// The shop this job is for: from the query param, or the draft's own shop.
+	const draftShop = savedDraft?.shop;
+	const attachedShopId = shopId || draftShop?._id || (typeof draftShop === "string" ? draftShop : null);
+	const { data: fetchedShop } = useShopQuery(draftShop?.name && !shopId ? null : attachedShopId);
+	const attachedShop = (draftShop?.name && !shopId ? draftShop : fetchedShop) || null;
 
 	// Files shared from another app ("Share with ClickPrint") wait in the
 	// service worker's cache until this screen opens; add and upload them.
@@ -159,58 +132,13 @@ const UploadDocument = () => {
 		};
 	}, [draftId, share, received]);
 
-	const updateDocument = (id, changes) => {
-		setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...changes } : d)));
-	};
-
-	// Uploads one picked document over tus, tracking progress on its card.
-	// Failures stay on the card with the reason so the user can retry or remove.
-	const startUpload = async (doc) => {
-		updateDocument(doc.id, { status: "uploading", progress: 0, errorMessage: null });
-		try {
-			const token = await SecureStore.getItemAsync("authToken");
-			let source;
-			if (Platform.OS === "web") {
-				source = doc.file.file || (await (await fetch(doc.file.uri)).blob());
-			} else {
-				source = { uri: doc.file.uri, name: doc.file.name, type: doc.file.mimeType };
-			}
-
-			const { promise, abort } = uploadFile(source, {
-				name: doc.file.name,
-				mimeType: doc.file.mimeType,
-				token,
-				onProgress: (progress) => updateDocument(doc.id, { progress }),
-			});
-			abortersRef.current[doc.id] = abort;
-
-			const uploaded = await promise;
-			console.log("Document uploaded successfully named ", doc.file.name, " with id ", uploaded._id);
-			updateDocument(doc.id, {
-				status: "success",
-				fileId: uploaded._id,
-				file: { ...doc.file, numberOfPages: uploaded.numberOfPages },
-			});
-		} catch (err) {
-			console.log("error in uploading document named ", doc.file.name, ":", err.message);
-			updateDocument(doc.id, { status: "failed", errorMessage: err.message || "Upload failed" });
-		} finally {
-			delete abortersRef.current[doc.id];
-		}
-	};
-
 	// Adds picked or shared files (DocumentPicker asset shape) and starts
 	// uploading each one.
 	const addDocuments = (files) => {
-		const newDocs = files.map((file) => ({
-			id: Math.random().toString(),
-			file,
-			name: file.name ? file.name.replace(/\.[^/.]+$/, "") || "Document" : "Document",
-			status: "uploading",
-			progress: 0,
-		}));
-		setDocuments((prev) => [...prev, ...newDocs]);
-		newDocs.forEach(startUpload);
+		addUploads(scope, files).catch((err) => {
+			console.error("Error adding documents:", err);
+			setError("Couldn't add those files. Please try again.");
+		});
 	};
 
 	const handleDocumentPick = async () => {
@@ -233,22 +161,23 @@ const UploadDocument = () => {
 		}
 	};
 
-	const handleRetryDocument = (id) => {
-		const doc = documents.find((d) => d.id === id);
-		if (doc) startUpload(doc);
-	};
+	const handleRetryDocument = (id) => retryUpload(id);
 
 	const handleRemoveDocument = (id) => {
-		abortersRef.current[id]?.();
-		delete abortersRef.current[id];
-		setDocuments((prev) => prev.filter((d) => d.id !== id));
+		if (existingDocs.some((d) => d.id === id)) {
+			setExistingDocs((prev) => prev.filter((d) => d.id !== id));
+		} else {
+			removeUpload(id);
+		}
 	};
+
+	// Everything shown on the screen, in the DocumentCard shape.
+	const documents = [...existingDocs, ...uploads.map(uploadToDocument)];
 
 	const handleContinue = async () => {
 		setUploading(true);
 		setError(null);
 		try {
-			const token = await SecureStore.getItemAsync("authToken");
 			const successfulDocs = documents.filter((d) => d.status === "success" || d.existing);
 			const documentArray = successfulDocs.map((doc) => ({
 				fileId: doc.fileId,
@@ -259,47 +188,30 @@ const UploadDocument = () => {
 
 			const effectiveShopId = attachedShop?._id || shopId || null;
 			let targetDraftId = draftId;
+			// Both calls are safe to repeat (the new draft's id is made here), so
+			// they retry on their own over a bad connection.
 			if (draftId) {
 				const files = successfulDocs.map((doc) => {
 					const entry = { file: doc.fileId };
 					if (doc.settings && Object.keys(doc.settings).length > 0) entry.settings = doc.settings;
 					return entry;
 				});
-				const payload = { files };
-				if (effectiveShopId) payload.shop = effectiveShopId;
-				const updateResponse = await fetch(`${API_BASE_URL}/drafts/${draftId}`, {
-					method: "PUT",
-					headers: {
-						Authorization: `Bearer ${token}`,
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify(payload),
-				});
-				const updateData = await updateResponse.json();
-				if (!updateResponse.ok) {
-					throw new Error(updateData.message || "Failed to update draft.");
-				}
-				console.log("Draft updated with files:", targetDraftId);
+				await updateDraft(draftId, { files, ...(effectiveShopId && { shop: effectiveShopId }) }, { onRetry: retry.onRetry });
 			} else {
-				const draftFiles = documentArray.map((doc) => ({ file: doc.fileId }));
-				const payload = { files: draftFiles };
-				if (effectiveShopId) payload.shop = effectiveShopId;
-				const draftResponse = await fetch(`${API_BASE_URL}/drafts`, {
-					method: "POST",
-					headers: {
-						Authorization: `Bearer ${token}`,
-						"Content-Type": "application/json",
+				if (!newDraftIdRef.current) newDraftIdRef.current = newObjectId();
+				const draft = await createDraft(
+					{
+						id: newDraftIdRef.current,
+						files: documentArray.map((doc) => ({ file: doc.fileId })),
+						...(effectiveShopId && { shop: effectiveShopId }),
 					},
-					body: JSON.stringify(payload),
-				});
-				const draftData = await draftResponse.json();
-				if (!draftResponse.ok) {
-					throw new Error(draftData.message || "Failed to create draft.");
-				}
-
-				targetDraftId = draftData.data.draft._id;
-				console.log("Draft created with ID:", targetDraftId);
+					{ onRetry: retry.onRetry }
+				);
+				targetDraftId = draft._id;
 			}
+
+			// The files are in the draft now; the upload list isn't needed.
+			clearScope(scope);
 
 			router.push({
 				pathname: "/print-settings",
@@ -311,14 +223,15 @@ const UploadDocument = () => {
 			});
 		} catch (err) {
 			console.error("Error continuing:", err);
-			setError("Failed to continue. Please try again.");
+			setError(friendlyMessage(err, "Failed to continue. Please try again."));
 		} finally {
 			setUploading(false);
+			retry.reset();
 		}
 	};
 
 	const hasDocuments = documents.length > 0;
-	const anyUploading = documents.some((d) => d.status === "uploading");
+	const anyUploading = documents.some((d) => d.status === "uploading" || d.status === "waiting");
 	const failedDocs = documents.filter((d) => d.status === "failed");
 	// Continue waits for every upload to finish and for failed ones to be
 	// retried or removed, so nothing is dropped from the draft silently.
@@ -425,10 +338,13 @@ const UploadDocument = () => {
 					disabled={!canContinue}
 				>
 					{uploading ? (
-						<ActivityIndicator color={colors.activityIndicator} />
+						<View style={styles.continueBusy}>
+							<ActivityIndicator color={colors.activityIndicator} />
+							{retry.label && <Text style={styles.continueButtonText}>{retry.label}</Text>}
+						</View>
 					) : (
 						<Text style={canContinue ? styles.continueButtonText : { color: "darkgrey" }}>
-							{anyUploading ? "Uploading..." : "Continue"}
+							{anyUploading ? "Waiting for uploads…" : "Continue"}
 						</Text>
 					)}
 				</TouchableOpacity>
@@ -449,6 +365,11 @@ const UploadDocument = () => {
 //----------------------------------- STYLES -----------------------------------//
 
 const styles = StyleSheet.create({
+	continueBusy: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
 	container: {
 		flex: 1,
 		backgroundColor: colors.background,

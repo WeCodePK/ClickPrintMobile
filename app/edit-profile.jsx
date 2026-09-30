@@ -14,8 +14,9 @@ import {
     View,
 } from "react-native";
 import { showAlert } from "../utils/alert";
+import { apiFetch } from "../utils/api";
+import { friendlyMessage } from "../utils/errors";
 import { SafeAreaView } from "react-native-safe-area-context";
-import config from "../config/config";
 import { colors } from "../constants/colors";
 
 const EditProfile = () => {
@@ -64,36 +65,15 @@ const EditProfile = () => {
         setSaving(true);
 
         try {
-            const token = await SecureStore.getItemAsync("authToken");
             const userId = await SecureStore.getItemAsync("userId");
-
-            const response = await fetch(`${config.apiBaseUrl}/users/${userId}`, {
-                method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    name: trimmedName,
-                }),
-            });
-
-            const data = await response.json();
-
-            if (response.ok || data.success) {
-                await SecureStore.setItemAsync("name", trimmedName);
-                router.replace("/(tabs)/profile");
-            } else {
-                showAlert(
-                    "Error",
-                    data.message ||
-                    "Failed to update name. Please try again."
-                );
-            }
+            // Setting a name is safe to repeat, so it retries on its own.
+            await apiFetch(`/users/${userId}`, { method: "PUT", body: { name: trimmedName } });
+            await SecureStore.setItemAsync("name", trimmedName);
+            router.replace("/(tabs)/profile");
         } catch (error) {
             showAlert(
-                "Connection Error",
-                "Please check your internet connection."
+                "Couldn't update your name",
+                friendlyMessage(error, "Failed to update name. Please try again.")
             );
         } finally {
             setSaving(false);

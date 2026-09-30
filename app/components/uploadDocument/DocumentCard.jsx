@@ -21,7 +21,9 @@ const DocumentCard = ({ doc, number, onRemove, onRetry, onPreview }) => {
 
 	// Tapping the card opens the preview once the file is on the server.
 	// The remove/retry buttons inside handle their own taps.
-	const canPreview = !!doc.fileId && doc.status !== "uploading" && doc.status !== "failed";
+	const canPreview = !!doc.fileId && (doc.status === "success" || doc.existing);
+	// "waiting": the connection dropped; the upload resumes by itself.
+	const waiting = doc.status === "waiting";
 
 	return (
 		<TouchableOpacity
@@ -68,15 +70,36 @@ const DocumentCard = ({ doc, number, onRemove, onRetry, onPreview }) => {
 						)}
 					</View>
 				</View>
-				{doc.status === "uploading" ? (
+				{doc.status === "uploading" || waiting ? (
 					<View style={styles.actionsContainer}>
-						<ActivityIndicator size="small" color={colors.primary} />
+						{waiting ? (
+							<Feather name="clock" size={18} color={colors.textSecondary} />
+						) : (
+							<ActivityIndicator size="small" color={colors.primary} />
+						)}
 						{removeButton}
 					</View>
 				) : (
 					removeButton
 				)}
 			</View>
+			{waiting && (
+				<View style={styles.failedRow}>
+					<Feather name="wifi-off" size={14} color={colors.textSecondary} />
+					<Text style={styles.waitingText}>
+						{`${doc.errorMessage || "Waiting for connection"} · ${Math.round((doc.progress ?? 0) * 100)}% done, resumes automatically`}
+					</Text>
+					<TouchableOpacity
+						style={styles.retryButton}
+						onPress={() => onRetry?.(doc.id)}
+						activeOpacity={0.7}
+						hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+					>
+						<Feather name="refresh-cw" size={14} color={colors.textPrimary} />
+						<Text style={styles.retryButtonText}>Now</Text>
+					</TouchableOpacity>
+				</View>
+			)}
 			{/* Full-width row under the card so the reason and Retry don't squeeze the file name */}
 			{doc.status === "failed" && (
 				<View style={styles.failedRow}>
@@ -215,5 +238,11 @@ const styles = StyleSheet.create({
 		color: colors.dangerDark,
 		fontSize: 12,
 		fontWeight: "700",
+	},
+	waitingText: {
+		flex: 1,
+		color: colors.textSecondary,
+		fontSize: 12,
+		fontWeight: "600",
 	},
 });

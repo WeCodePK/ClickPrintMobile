@@ -2,7 +2,7 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	ScrollView,
@@ -14,15 +14,17 @@ import {
 	View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import config from "../config/config";
+import { useQueryClient } from "@tanstack/react-query";
 import { colors } from "../constants/colors";
+import { queryKeys, useDraftQuery, useShopQuery } from "../hooks/queries";
+import { useRetryStatus } from "../hooks/useRetryStatus";
+import { checkDraft, submitDraft, updateDraft } from "../services/drafts";
 import { showAlert } from "../utils/alert";
 import { documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
-import { getItemAsync } from "../utils/storage";
+import { friendlyMessage } from "../utils/errors";
+import { onOnlineChange } from "../utils/network";
 
 //----------------------------------- CONSTANTS -----------------------------------//
-
-const API_BASE_URL = config.apiBaseUrl;
 
 const SIDEDNESS_LABELS = {
 	none: "Single Sided",
@@ -64,53 +66,86 @@ const DraftDetails = () => {
 	const params = useLocalSearchParams();
 	const insets = useSafeAreaInsets();
 
-	let draft = null;
-	try {
-		draft = JSON.parse(params.draft);
-	} catch (e) {
-		console.error("Failed to parse draft param:", e);
-	}
+	// Screens navigate here with the draft id; the draft itself comes from the
+	// cache (seeded by the pricing step), so it survives reloads and opens
+	// offline. `draft` (a JSON copy) is still accepted from older links.
+	const draftId =
+		params.draftId ||
+		(() => {
+			try {
+				return JSON.parse(params.draft)?._id;
+			} catch {
+				return null;
+			}
+		})();
+	const queryClient = useQueryClient();
+	const draftQuery = useDraftQuery(draftId);
+	const draft = draftQuery.data ?? null;
 
 	const shopId = draft?.shop?._id || (typeof draft?.shop === "string" ? draft.shop : null);
-	// The checked draft can arrive with the shop unpopulated (id only) or without
-	// the COD limit, so the shop record is fetched whenever either is missing.
-	const needsShopFetch =
-		!!shopId && (!draft?.shop?.name || typeof draft?.shop?.codLimit !== "number");
+	// The draft can carry the shop unpopulated (id only) or without the COD
+	// limit, so the (cached) shop record fills those in.
+	const shopQuery = useShopQuery(shopId);
+	const shopName = draft?.shop?.name || shopQuery.data?.name || "";
+	const codLimit =
+		typeof draft?.shop?.codLimit === "number"
+			? draft.shop.codLimit
+			: typeof shopQuery.data?.codLimit === "number"
+				? shopQuery.data.codLimit
+				: null;
+	const codLimitKnown = codLimit !== null || shopQuery.isSuccess;
+	const loadingShop = !codLimitKnown && shopQuery.isFetching;
+	// The shop lookup failed (offline, timeout, server error), so whether COD is
+	// allowed is unknown — distinct from a shop that has no COD limit.
+	const shopLoadFailed = !codLimitKnown && shopQuery.isError && !shopQuery.isFetching;
+	const fetchShop = () => shopQuery.refetch();
 
-	const [shopName, setShopName] = useState(draft?.shop?.name || "");
-	const [codLimit, setCodLimit] = useState(
-		typeof draft?.shop?.codLimit === "number" ? draft.shop.codLimit : null
-	);
-	const [loadingShop, setLoadingShop] = useState(needsShopFetch);
 	const [paymentMethod, setPaymentMethod] = useState(null);
 	const [additionalComments, setAdditionalComments] = useState(draft?.additionalComments || "");
 	const [submitting, setSubmitting] = useState(false);
+	const retry = useRetryStatus();
 
+	// Comments typed before the draft finished loading aren't overwritten.
+	const commentsTouched = useRef(false);
 	useEffect(() => {
-		const fetchShop = async () => {
-			if (!needsShopFetch) return;
-			try {
-				setLoadingShop(true);
-				const token = await getItemAsync("authToken");
-				const response = await fetch(`${API_BASE_URL}/shops/${shopId}`, {
-					headers: { Authorization: `Bearer ${token}` },
-				});
-				if (response.ok) {
-					const data = await response.json();
-					const shop = data.data?.shop;
-					if (data.success && shop) {
-						setShopName(shop.name);
-						setCodLimit(typeof shop.codLimit === "number" ? shop.codLimit : null);
-					}
-				}
-			} catch (error) {
-				console.error("Failed to fetch shop details:", error);
-			} finally {
-				setLoadingShop(false);
-			}
-		};
-		fetchShop();
-	}, [shopId]);
+		if (draft && !commentsTouched.current) setAdditionalComments(draft.additionalComments || "");
+	}, [draft]);
+
+	// Any edit to a draft clears its price, so price it here when it has none.
+	// Pricing needs the backend: offline, it runs again once reconnected.
+	const [pricing, setPricing] = useState(false);
+	const [pricingError, setPricingError] = useState(null);
+	const priceDraft = useCallback(async () => {
+		if (!draftId) return;
+		setPricing(true);
+		setPricingError(null);
+		try {
+			await checkDraft(draftId);
+		} catch (err) {
+			setPricingError(friendlyMessage(err, "Couldn't calculate the price."));
+		} finally {
+			setPricing(false);
+		}
+	}, [draftId]);
+	const needsPrice = !!draft && !draft.cost;
+	useEffect(() => {
+		if (needsPrice && !pricing && !pricingError) priceDraft();
+	}, [needsPrice, pricing, pricingError, priceDraft]);
+	useEffect(() => {
+		if (!pricingError) return;
+		return onOnlineChange((online) => online && priceDraft());
+	}, [pricingError, priceDraft]);
+
+	if (!draft && draftQuery.isPending && draftId) {
+		return (
+			<SafeAreaView style={styles.container} edges={["top"]}>
+				<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+				<View style={styles.emptyState}>
+					<ActivityIndicator size="large" color={colors.primary} />
+				</View>
+			</SafeAreaView>
+		);
+	}
 
 	if (!draft) {
 		return (
@@ -124,7 +159,11 @@ const DraftDetails = () => {
 					<View style={styles.placeholder} />
 				</View>
 				<View style={styles.emptyState}>
-					<Text style={styles.emptyText}>No draft information available.</Text>
+					<Text style={styles.emptyText}>
+						{draftQuery.isError
+							? friendlyMessage(draftQuery.error, "This draft couldn't be loaded.")
+							: "No draft information available."}
+					</Text>
 				</View>
 			</SafeAreaView>
 		);
@@ -142,7 +181,9 @@ const DraftDetails = () => {
 
 	const codSubLabel = loadingShop
 		? "Checking availability..."
-		: typeof codLimit !== "number"
+		: shopLoadFailed
+			? "Couldn't check availability. Check your connection."
+			: typeof codLimit !== "number"
 			? "Not available for this shop"
 			: codAllowed
 				? "Pay at the shop when you collect"
@@ -168,28 +209,15 @@ const DraftDetails = () => {
 	};
 
 	// Comments belong to the draft, so they are saved with a PUT before the job
-	// leaves this screen; /submit only carries the payment method.
-	const saveAdditionalComments = async (token) => {
+	// leaves this screen; /submit only carries the payment method. The PUT
+	// clears the draft's price on the backend, but comments don't change it, so
+	// the cached price is kept (submit re-prices anyway).
+	const saveAdditionalComments = async () => {
 		const trimmed = additionalComments.trim();
 		if (trimmed === (draft?.additionalComments || "").trim()) return;
-
-		const targetDraftId = draft?._id || params.draftId || "";
-		if (!targetDraftId) {
-			throw new Error("Draft ID is missing. Cannot save your comments.");
-		}
-
-		const response = await fetch(`${API_BASE_URL}/drafts/${targetDraftId}`, {
-			method: "PUT",
-			headers: {
-				Authorization: `Bearer ${token}`,
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ additionalComments: trimmed }),
-		});
-		const data = await response.json();
-		if (!response.ok) {
-			throw new Error(data.message || "Failed to save your comments.");
-		}
+		const previousCost = draft.cost;
+		await updateDraft(draft._id, { additionalComments: trimmed }, { onRetry: retry.onRetry });
+		queryClient.setQueryData(queryKeys.draft(draft._id), (d) => d && { ...d, cost: d.cost ?? previousCost });
 	};
 
 	// Upfront payment continues on the top-up screen, so the comments are saved
@@ -197,61 +225,44 @@ const DraftDetails = () => {
 	const handlePayUpfront = async () => {
 		try {
 			setSubmitting(true);
-			const token = await getItemAsync("authToken");
-			await saveAdditionalComments(token);
+			await saveAdditionalComments();
 			router.push({
 				pathname: "/topup",
 				params: {
 					shopId: shopId || "",
-					draftId: draft?._id || params.draftId || "",
+					draftId: draft._id,
 					amount: String(cost.total ?? 0),
-					draft: JSON.stringify({ ...draft, additionalComments: additionalComments.trim() }),
 				},
 			});
 		} catch (err) {
 			console.error("Error saving comments:", err);
-			showAlert("Error", err.message || "Failed to save your comments. Please try again.");
+			showAlert("Couldn't save your comments", friendlyMessage(err, "Failed to save your comments. Please try again."));
 		} finally {
 			setSubmitting(false);
+			retry.reset();
 		}
 	};
 
 	// COD needs no payment proof, so the draft is submitted straight from here.
+	// submitDraft checks whether a lost attempt went through before retrying,
+	// so a bad connection can't create the job twice.
 	const handleCashOnDelivery = async () => {
-		const targetDraftId = draft?._id || params.draftId || "";
-		if (!targetDraftId) {
-			showAlert("Error", "Draft ID is missing. Cannot submit job.");
-			return;
-		}
 		try {
 			setSubmitting(true);
-			const token = await getItemAsync("authToken");
-			await saveAdditionalComments(token);
-			const response = await fetch(`${API_BASE_URL}/drafts/${targetDraftId}/submit`, {
-				method: "PATCH",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
+			await saveAdditionalComments();
+			await submitDraft(draft._id, "cod", { onRetry: retry.onRetry });
+			showAlert("Success", "Your print job has been submitted! Pay the shop on collection.", [
+				{
+					text: "OK",
+					onPress: () => router.replace("/(tabs)/home"),
 				},
-				body: JSON.stringify({ paymentMethod: "cod" }),
-			});
-			const data = await response.json();
-			if (response.ok && data.success) {
-				showAlert("Success", "Your print job has been submitted! Pay the shop on collection.", [
-					{
-						text: "OK",
-						onPress: () => router.replace("/(tabs)/home"),
-					},
-				]);
-			} else {
-				console.log("Failed to submit draft response:", data);
-				throw new Error(data.message || "Failed to submit job.");
-			}
+			]);
 		} catch (err) {
 			console.error("Error submitting job:", err);
-			showAlert("Error", err.message || "Failed to submit draft. Please try again.");
+			showAlert("Couldn't submit the job", friendlyMessage(err, "Failed to submit draft. Please try again."));
 		} finally {
 			setSubmitting(false);
+			retry.reset();
 		}
 	};
 
@@ -287,7 +298,18 @@ const DraftDetails = () => {
 						<Feather name="file-text" size={32} color={colors.printRequest} />
 					</View>
 					<Text style={styles.summaryTitle}>Draft Created</Text>
-					<Text style={styles.summaryTotal}>{formatCurrency(cost.total ?? 0)}</Text>
+					{needsPrice ? (
+						pricingError ? (
+							<TouchableOpacity style={styles.codRetryButton} onPress={priceDraft} activeOpacity={0.7}>
+								<Feather name="refresh-cw" size={14} color={colors.primary} />
+								<Text style={styles.codRetryText}>{pricingError} Tap to retry.</Text>
+							</TouchableOpacity>
+						) : (
+							<ActivityIndicator size="small" color={colors.primary} style={styles.pricingSpinner} />
+						)
+					) : (
+						<Text style={styles.summaryTotal}>{formatCurrency(cost.total ?? 0)}</Text>
+					)}
 					<Text style={styles.summaryDate}>{files.length} file{files.length !== 1 ? "s" : ""}</Text>
 				</View>
 
@@ -375,7 +397,10 @@ const DraftDetails = () => {
 						placeholder="Anything the shop should know about this job? (optional)"
 						placeholderTextColor={colors.textSecondary}
 						value={additionalComments}
-						onChangeText={setAdditionalComments}
+						onChangeText={(text) => {
+							commentsTouched.current = true;
+							setAdditionalComments(text);
+						}}
 						editable={!submitting}
 						multiline
 						textAlignVertical="top"
@@ -424,6 +449,12 @@ const DraftDetails = () => {
 							/>
 						)}
 					</TouchableOpacity>
+					{shopLoadFailed && !loadingShop && (
+						<TouchableOpacity style={styles.codRetryButton} onPress={fetchShop} activeOpacity={0.7}>
+							<Feather name="refresh-cw" size={14} color={colors.primary} />
+							<Text style={styles.codRetryText}>Check Cash on Delivery again</Text>
+						</TouchableOpacity>
+					)}
 
 					<TouchableOpacity
 						style={[
@@ -455,12 +486,15 @@ const DraftDetails = () => {
 			{/* Footer Continue Button */}
 			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
 				<TouchableOpacity
-					style={[styles.submitButton, (!selectedMethod || submitting) && styles.submitButtonDisabled]}
+					style={[styles.submitButton, (!selectedMethod || submitting || needsPrice) && styles.submitButtonDisabled]}
 					onPress={handleContinue}
-					disabled={!selectedMethod || submitting}
+					disabled={!selectedMethod || submitting || needsPrice}
 				>
 					{submitting ? (
-						<ActivityIndicator size="small" color={colors.cardBackground} />
+						<>
+							<ActivityIndicator size="small" color={colors.cardBackground} />
+							{retry.label && <Text style={styles.submitButtonText}>{retry.label}</Text>}
+						</>
 					) : (
 						<>
 							<Text style={styles.submitButtonText}>
@@ -777,10 +811,6 @@ const styles = StyleSheet.create({
 		gap: 8,
 	},
 	submitButtonDisabled: {
-		backgroundColor: colors.navInactive,
-		opacity: 0.6,
-	},
-	submitButtonDisabled: {
 		opacity: 0.6,
 	},
 	submitButtonText: {
@@ -834,6 +864,23 @@ const styles = StyleSheet.create({
 	},
 	paymentLabelDisabled: {
 		color: colors.textSecondary,
+	},
+	pricingSpinner: {
+		marginVertical: 8,
+	},
+	codRetryButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		alignSelf: "flex-start",
+		gap: 6,
+		paddingVertical: 6,
+		marginTop: -4,
+		marginBottom: 8,
+	},
+	codRetryText: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: colors.primary,
 	},
 	paymentSubLabel: {
 		fontSize: 12,

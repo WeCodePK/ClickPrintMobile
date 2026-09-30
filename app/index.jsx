@@ -7,13 +7,13 @@ import { ActivityIndicator, Image, Keyboard, Platform, StyleSheet, Text, TextInp
 import { SafeAreaView } from "react-native-safe-area-context";
 import appLogo from "../assets/icon.png";
 import DismissKeyboard from "../components/DismissKeyboard";
-import config from "../config/config";
 import { colors } from "../constants/colors";
 import { showAlert } from "../utils/alert";
+import { apiFetch } from "../utils/api";
+import { friendlyMessage, isConnectionError } from "../utils/errors";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
-const API_BASE_URL = config.apiBaseUrl;
 const COUNTRY_CODE = "+92";
 
 //----------------------------------- COMPONENTS -----------------------------------//
@@ -83,43 +83,28 @@ const Login = () => {
 		console.log("Requesting OTP for:", phone);
 
 		try {
-			const response = await fetch(`${API_BASE_URL}/auth/otp`, {
+			// Not retried automatically: each request texts a new code.
+			const data = await apiFetch("/auth/otp", {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ number: `92${phone}`, intent: 'user' }),
+				auth: false,
+				retries: 0,
+				body: { number: `92${phone}`, intent: "user" },
 			});
-
-			if (!response.ok) {
-				showAlert("Error", "Failed to send OTP. Please try again.");
-				console.error("OTP request failed with status:", response.status);
-				return;
-			}
-
-			const data = await response.json();
-			console.log(data.message);
-			if (data.success) {
-				const otpConfig = data.data?.config || {};
-				router.replace({
-					pathname: "/otp",
-					params: {
-						phone: `92${phone}`,
-						codeLength: otpConfig.codeLength,
-						resendInMs: otpConfig.resendInMs,
-					},
-				});
-			} else {
-				showAlert("Error", "Failed to send OTP. Please try again.");
-				console.error("OTP request failed:", data.message);
-			}
-
+			const otpConfig = data?.data?.config || {};
+			router.replace({
+				pathname: "/otp",
+				params: {
+					phone: `92${phone}`,
+					codeLength: otpConfig.codeLength,
+					resendInMs: otpConfig.resendInMs,
+				},
+			});
 		} catch (error) {
 			console.error("Error sending OTP:", error);
-			if (error.message === "Network request failed") {
-				showAlert("No Internet", "Please check your internet connection and try again.");
+			if (isConnectionError(error)) {
+				showAlert("No Internet", friendlyMessage(error));
 			} else {
-				showAlert("Error", "An unexpected error occurred. Please try again.");
+				showAlert("Couldn't send the code", friendlyMessage(error, "Failed to send OTP. Please try again."));
 			}
 		} finally {
 			setLoading(false);

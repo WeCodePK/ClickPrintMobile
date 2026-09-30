@@ -19,6 +19,7 @@ import { ActivityIndicator, Image, Modal, Platform, StyleSheet, Text, View } fro
 import appLogo from "../assets/icon.png";
 import config from "../config/config";
 import { colors } from "../constants/colors";
+import { whenIdle } from "../utils/busy";
 
 const ENABLED = Platform.OS === "web" && process.env.NODE_ENV === "production";
 
@@ -83,6 +84,7 @@ export default function ServiceWorkerUpdater() {
 		const serviceWorker = navigator.serviceWorker;
 		let disposed = false;
 		let reloading = false;
+		let cancelIdleWait = null;
 
 		// Reload if the worker in control belongs to a different build than this
 		// page. Only call this once that worker is known to be the latest one:
@@ -107,8 +109,13 @@ export default function ServiceWorkerUpdater() {
 
 			reloading = true;
 			setReloadedFor(workerSha);
-			setUpdating(true);
-			setTimeout(() => window.location.reload(), MIN_OVERLAY_MS);
+			// Don't cut off an upload or a job being submitted: reload once
+			// they're done (see utils/busy.js).
+			cancelIdleWait = whenIdle(() => {
+				if (disposed) return;
+				setUpdating(true);
+				setTimeout(() => window.location.reload(), MIN_OVERLAY_MS);
+			});
 		};
 
 		// Asks the browser to re-fetch sw.js. If it changed, the new worker
@@ -181,6 +188,7 @@ export default function ServiceWorkerUpdater() {
 
 		return () => {
 			disposed = true;
+			cancelIdleWait?.();
 			clearTimeout(nudgeTimer);
 			watchedRegistration?.removeEventListener("updatefound", handleUpdateFound);
 			serviceWorker.removeEventListener("controllerchange", reloadIfStale);
