@@ -151,14 +151,7 @@ const ShopsPage = () => {
 										</TouchableOpacity>
 									)}
 								</View>
-								<TouchableOpacity
-									style={styles.scanQrBtn}
-									onPress={() => router.push("/qr-scanner")}
-									activeOpacity={0.8}
-									accessibilityLabel="Scan shop QR code"
-								>
-									<Feather name="maximize" size={20} color={colors.primary} />
-								</TouchableOpacity>
+								
 							</View>
 
 							<ScrollView
@@ -400,21 +393,6 @@ const styles = StyleSheet.create({
 		borderRadius: 12,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
-	},
-	scanQrBtn: {
-		width: 44,
-		height: 44,
-		borderRadius: 12,
-		backgroundColor: colors.cardBackground,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		alignItems: "center",
-		justifyContent: "center",
-		shadowColor: colors.shadowLight || "#000",
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.08,
-		shadowRadius: 6,
-		elevation: 2,
 	},
 	floatingScanMapButton: {
 		position: "absolute",

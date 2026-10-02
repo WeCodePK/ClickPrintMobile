@@ -103,6 +103,10 @@ const DraftDetails = () => {
 	const [paymentMethod, setPaymentMethod] = useState(null);
 	const [additionalComments, setAdditionalComments] = useState(draft?.additionalComments || "");
 	const [submitting, setSubmitting] = useState(false);
+	const [expandedFiles, setExpandedFiles] = useState({});
+	const [expandedSizes, setExpandedSizes] = useState({ A4: false, A3: false, Other: false });
+	const [expandedCostSection, setExpandedCostSection] = useState(false);
+	const [expandedFilesSection, setExpandedFilesSection] = useState(false);
 	const retry = useRetryStatus();
 
 	// Comments typed before the draft finished loading aren't overwritten.
@@ -274,6 +278,38 @@ const DraftDetails = () => {
 		}
 	};
 
+	const toggleFile = (id) => {
+		setExpandedFiles((prev) => ({ ...prev, [id]: !prev[id] }));
+	};
+
+	const toggleSize = (size) => {
+		setExpandedSizes((prev) => ({ ...prev, [size]: !prev[size] }));
+	};
+
+	// Group cost lines into a tree: Size -> Color -> Sidedness
+	const groupCostLines = (lines) => {
+		const tree = {};
+		const others = [];
+		(lines || []).forEach((line) => {
+			const name = (line.item || "").toUpperCase();
+			const isA3 = name.includes("A3");
+			const isA4 = name.includes("A4");
+			if (!isA3 && !isA4) {
+				others.push(line);
+				return;
+			}
+			const size = isA3 ? "A3" : "A4";
+			const color = name.includes("COLOR") || name.includes("COLOUR") || name.includes("-CL") || name.includes(" CL") ? "Color" : "Black & White";
+			const sided = name.includes("DOUBLE") || name.includes("LONG") || name.includes("SHORT") || name.includes("-DS") || name.includes(" DS") ? "Double Sided" : "Single Sided";
+
+			if (!tree[size]) tree[size] = {};
+			if (!tree[size][color]) tree[size][color] = [];
+			tree[size][color].push({ ...line, label: sided });
+		});
+		return { tree, others };
+	};
+	const { tree: costTree, others: costOthers } = groupCostLines(cost.lines);
+
 	//----------------------------------- RENDER -----------------------------------//
 
 	return (
@@ -294,192 +330,273 @@ const DraftDetails = () => {
 			>
 				{/* Summary Card */}
 				<View style={styles.summaryCard}>
-					<View style={styles.summaryIconContainer}>
-						<Feather name="file-text" size={32} color={colors.printRequest} />
+					<View style={styles.summaryMain}>
+						<View style={styles.summaryIconContainer}>
+							<Feather name="file-text" size={20} color={colors.printRequest} />
+						</View>
+						<View style={styles.summaryTextGroup}>
+							<Text style={styles.summaryTitle}>Draft Created</Text>
+							<Text style={styles.summaryDate}>{files.length} file{files.length !== 1 ? "s" : ""}</Text>
+						</View>
 					</View>
-					<Text style={styles.summaryTitle}>Draft Created</Text>
-					{needsPrice ? (
-						pricingError ? (
-							<TouchableOpacity style={styles.codRetryButton} onPress={priceDraft} activeOpacity={0.7}>
-								<Feather name="refresh-cw" size={14} color={colors.primary} />
-								<Text style={styles.codRetryText}>{pricingError} Tap to retry.</Text>
-							</TouchableOpacity>
+					<View style={styles.summaryRight}>
+						{needsPrice ? (
+							pricingError ? (
+								<TouchableOpacity style={styles.codRetryButton} onPress={priceDraft} activeOpacity={0.7}>
+									<Feather name="refresh-cw" size={12} color={colors.primary} />
+									<Text style={styles.codRetryText}>Retry</Text>
+								</TouchableOpacity>
+							) : (
+								<ActivityIndicator size="small" color={colors.primary} style={styles.pricingSpinner} />
+							)
 						) : (
-							<ActivityIndicator size="small" color={colors.primary} style={styles.pricingSpinner} />
-						)
-					) : (
-						<Text style={styles.summaryTotal}>{formatCurrency(cost.total ?? 0)}</Text>
-					)}
-					<Text style={styles.summaryDate}>{files.length} file{files.length !== 1 ? "s" : ""}</Text>
+							<Text style={styles.summaryTotal}>{formatCurrency(cost.total ?? 0)}</Text>
+						)}
+						<View style={styles.shopBadge}>
+							<Feather name="map-pin" size={10} color={colors.textSecondary} />
+							<Text style={styles.shopBadgeText} numberOfLines={1}>{shopName || "Loading..."}</Text>
+						</View>
+					</View>
 				</View>
 
-				{/* Draft Info */}
+				{/* Additional Comments */}
 				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Feather name="info" size={18} color={colors.printRequest} />
-						<Text style={styles.sectionTitle}>Draft Info</Text>
-					</View>
 					<View style={styles.card}>
-						<InfoRow label="Shop" value={shopName || "Loading..."} mono />
-						<InfoRow label="Total Files" value={`${files.length} file${files.length !== 1 ? "s" : ""}`} />
+						<View style={[styles.cardHeader, styles.cardHeaderExpanded]}>
+							<View style={styles.cardHeaderLeft}>
+								<Feather name="message-square" size={18} color={colors.printRequest} />
+								<Text style={styles.sectionTitle}>Additional Comments</Text>
+							</View>
+						</View>
+						<View style={styles.cardContent}>
+							<TextInput
+								style={styles.commentsInputInner}
+								placeholder="Anything the shop should know about this job? (optional)"
+								placeholderTextColor={colors.textSecondary}
+								value={additionalComments}
+								onChangeText={(text) => {
+									commentsTouched.current = true;
+									setAdditionalComments(text);
+								}}
+								editable={!submitting}
+								multiline
+								textAlignVertical="top"
+								maxLength={500}
+							/>
+						</View>
 					</View>
 				</View>
 
 				{/* Cost Breakdown */}
 				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Feather name="dollar-sign" size={18} color={colors.printRequest} />
-						<Text style={styles.sectionTitle}>Cost Breakdown</Text>
-					</View>
 					<View style={styles.card}>
-						{(cost.lines || []).map((line, index) => (
-							<View key={`line-${index}`} style={styles.costRow}>
-								<View style={styles.costRowLeft}>
-									<Text style={styles.costLabel}>{line.item}</Text>
-									<Text style={styles.costSubLabel}>{line.quantity} × {formatCurrency(line.rate)}</Text>
-								</View>
-								<Text style={styles.costValue}>{formatCurrency(line.subtotal)}</Text>
+						<TouchableOpacity 
+							style={[styles.cardHeader, expandedCostSection && styles.cardHeaderExpanded]}
+							onPress={() => setExpandedCostSection(!expandedCostSection)}
+							activeOpacity={0.7}
+						>
+							<View style={styles.cardHeaderLeft}>
+								<Feather name="dollar-sign" size={18} color={colors.printRequest} />
+								<Text style={styles.sectionTitle}>Cost Breakdown</Text>
 							</View>
-						))}
-						{(cost.extra || []).map((extra, index) => (
-							<View key={`extra-${index}`} style={styles.costRow}>
-								<View style={styles.costRowLeft}>
-									<Text style={styles.costLabel}>{extra.item}</Text>
+							<Feather name={expandedCostSection ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+						</TouchableOpacity>
+						
+						{expandedCostSection && (
+							<View style={styles.cardContent}>
+								{Object.keys(costTree).sort().map((size) => (
+									<View key={size} style={styles.treeNodeSize}>
+										<TouchableOpacity 
+											style={styles.treeHeader} 
+											onPress={() => toggleSize(size)}
+											activeOpacity={0.7}
+										>
+											<View style={styles.treeHeaderLeft}>
+												<Feather name="file" size={16} color={colors.textSecondary} />
+												<Text style={styles.treeSizeLabel}>{size}</Text>
+											</View>
+											<Feather name={expandedSizes[size] ? "chevron-up" : "chevron-down"} size={16} color={colors.textSecondary} />
+										</TouchableOpacity>
+
+										{expandedSizes[size] && Object.keys(costTree[size]).map((color) => (
+											<View key={color} style={styles.treeNodeColor}>
+												<View style={styles.treeColorHeader}>
+													<View style={[styles.colorIndicator, color === "Color" && styles.colorIndicatorGradient]} />
+													<Text style={styles.treeColorLabel}>{color}</Text>
+												</View>
+												{costTree[size][color].map((line, idx) => (
+													<View key={idx} style={styles.treeNodeSided}>
+														<View style={styles.treeSidedLeft}>
+															<Feather name={line.label === "Double Sided" ? "copy" : "square"} size={14} color={colors.textSecondary} />
+															<Text style={styles.treeSidedLabel}>{line.label}</Text>
+															<Text style={styles.treeSidedQty}>({line.quantity})</Text>
+														</View>
+														<Text style={styles.treeSidedValue}>{formatCurrency(line.subtotal)}</Text>
+													</View>
+												))}
+											</View>
+										))}
+									</View>
+								))}
+
+								{/* Other items not matching standard patterns */}
+								{costOthers.map((line, index) => (
+									<View key={`other-${index}`} style={styles.costRow}>
+										<View style={styles.costRowLeft}>
+											<Text style={styles.costLabel}>{line.item}</Text>
+											<Text style={styles.costSubLabel}>{line.quantity} × {formatCurrency(line.rate)}</Text>
+										</View>
+										<Text style={styles.costValue}>{formatCurrency(line.subtotal)}</Text>
+									</View>
+								))}
+
+								{(cost.extra || []).map((extra, index) => (
+									<View key={`extra-${index}`} style={styles.costRow}>
+										<View style={styles.costRowLeft}>
+											<Text style={styles.costLabel}>{extra.item}</Text>
+										</View>
+										<Text style={styles.costValue}>{formatCurrency(extra.subtotal)}</Text>
+									</View>
+								))}
+								<View style={[styles.totalRow, { paddingBottom: 0 }]}>
+									<Text style={styles.totalLabel}>Total</Text>
+									<Text style={styles.totalValue}>{formatCurrency(cost.total ?? 0)}</Text>
 								</View>
-								<Text style={styles.costValue}>{formatCurrency(extra.subtotal)}</Text>
 							</View>
-						))}
-						<View style={styles.totalRow}>
-							<Text style={styles.totalLabel}>Total</Text>
-							<Text style={styles.totalValue}>{formatCurrency(cost.total ?? 0)}</Text>
-						</View>
+						)}
 					</View>
 				</View>
 
 				{/* Files Section */}
 				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Feather name="file-text" size={18} color={colors.printRequest} />
-						<Text style={styles.sectionTitle}>Files ({files.length})</Text>
-					</View>
-					{files.map((fileEntry, index) => (
-						<View key={`${fileEntry.file?._id || fileEntry.file}-${index}`} style={[styles.fileCard, index < files.length - 1 && styles.fileCardSpacing]}>
-							<View style={styles.fileCardHeader}>
-								<View style={styles.fileIcon}>
-									<Feather name="file" size={16} color={colors.printRequest} />
-								</View>
-								<View style={styles.fileCardHeaderText}>
-									<Text style={styles.fileLabel}>{fileEntry.file?.name || `File ${index + 1}`}</Text>
-									
-								</View>
+					<View style={styles.card}>
+						<TouchableOpacity 
+							style={[styles.cardHeader, expandedFilesSection && styles.cardHeaderExpanded]}
+							onPress={() => setExpandedFilesSection(!expandedFilesSection)}
+							activeOpacity={0.7}
+						>
+							<View style={styles.cardHeaderLeft}>
+								<Feather name="file-text" size={18} color={colors.printRequest} />
+								<Text style={styles.sectionTitle}>Files ({files.length})</Text>
 							</View>
+							<Feather name={expandedFilesSection ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+						</TouchableOpacity>
 
-							<View style={styles.settingsDivider} />
+						{expandedFilesSection && (
+							<View style={styles.cardContent}>
+								{files.map((fileEntry, index) => {
+									const key = `${fileEntry.file?._id || fileEntry.file}-${index}`;
+									const isExpanded = expandedFiles[key];
+									return (
+										<View key={key} style={[styles.fileCardInner, index < files.length - 1 && styles.fileCardInnerBorder]}>
+											<TouchableOpacity 
+												style={styles.fileCardHeader}
+												onPress={() => toggleFile(key)}
+												activeOpacity={0.7}
+											>
+												<View style={styles.fileIcon}>
+													<Feather name="file" size={16} color={colors.printRequest} />
+												</View>
+												<View style={styles.fileCardHeaderText}>
+													<Text style={styles.fileLabel}>{fileEntry.file?.name || `File ${index + 1}`}</Text>
+												</View>
+												<Feather name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+											</TouchableOpacity>
 
-							{Object.entries(fileEntry.settings || {}).map(([key, value], i, arr) => (
-								<View key={key} style={[styles.settingRow, i < arr.length - 1 && styles.settingRowBorder]}>
-									<Text style={styles.settingLabel}>{SETTING_LABELS[key] || key}</Text>
-									<Text style={styles.settingValue}>{formatSettingValue(key, value)}</Text>
-								</View>
-							))}
-						</View>
-					))}
-				</View>
-
-				{/* Additional Comments */}
-				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Feather name="message-square" size={18} color={colors.printRequest} />
-						<Text style={styles.sectionTitle}>Additional Comments</Text>
+											{isExpanded && (
+												<View style={styles.fileCardContent}>
+													<View style={styles.settingsDivider} />
+													{Object.entries(fileEntry.settings || {}).map(([sKey, value], i, arr) => (
+														<View key={sKey} style={[styles.settingRow, i < arr.length - 1 && styles.settingRowBorder]}>
+															<Text style={styles.settingLabel}>{SETTING_LABELS[sKey] || sKey}</Text>
+															<Text style={styles.settingValue}>{formatSettingValue(sKey, value)}</Text>
+														</View>
+													))}
+												</View>
+											)}
+										</View>
+									);
+								})}
+							</View>
+						)}
 					</View>
-					<TextInput
-						style={styles.commentsInput}
-						placeholder="Anything the shop should know about this job? (optional)"
-						placeholderTextColor={colors.textSecondary}
-						value={additionalComments}
-						onChangeText={(text) => {
-							commentsTouched.current = true;
-							setAdditionalComments(text);
-						}}
-						editable={!submitting}
-						multiline
-						textAlignVertical="top"
-						maxLength={500}
-					/>
 				</View>
 
 				{/* Payment Method */}
 				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Feather name="credit-card" size={18} color={colors.printRequest} />
-						<Text style={styles.sectionTitle}>Payment Method</Text>
+					<View style={styles.card}>
+						<View style={[styles.cardHeader, styles.cardHeaderExpanded]}>
+							<View style={styles.cardHeaderLeft}>
+								<Feather name="credit-card" size={18} color={colors.printRequest} />
+								<Text style={styles.sectionTitle}>Payment Method</Text>
+							</View>
+						</View>
+
+						<View style={styles.cardContent}>
+							<TouchableOpacity
+								style={[
+									styles.paymentOptionInner,
+									styles.paymentOptionInnerBorder,
+									!codAllowed && styles.paymentOptionDisabled,
+								]}
+								onPress={() => setPaymentMethod("cod")}
+								disabled={!codAllowed || submitting}
+								activeOpacity={0.8}
+							>
+								<View style={[styles.paymentIcon, !codAllowed && styles.paymentIconDisabled]}>
+									<Feather
+										name="truck"
+										size={18}
+										color={codAllowed ? colors.printRequest : colors.textSecondary}
+									/>
+								</View>
+								<View style={styles.paymentTexts}>
+									<Text style={[styles.paymentLabel, !codAllowed && styles.paymentLabelDisabled]}>
+										Cash on Delivery
+									</Text>
+									<Text style={styles.paymentSubLabel}>{codSubLabel}</Text>
+								</View>
+								{loadingShop ? (
+									<ActivityIndicator size="small" color={colors.textSecondary} />
+								) : (
+									<Feather
+										name={selectedMethod === "cod" ? "check-circle" : "circle"}
+										size={20}
+										color={selectedMethod === "cod" ? colors.printRequest : colors.textSecondary}
+									/>
+								)}
+							</TouchableOpacity>
+
+							{shopLoadFailed && !loadingShop && (
+								<TouchableOpacity style={styles.codRetryButton} onPress={fetchShop} activeOpacity={0.7}>
+									<Feather name="refresh-cw" size={14} color={colors.primary} />
+									<Text style={styles.codRetryText}>Check Cash on Delivery again</Text>
+								</TouchableOpacity>
+							)}
+
+							<TouchableOpacity
+								style={styles.paymentOptionInner}
+								onPress={() => setPaymentMethod("upfront")}
+								disabled={submitting}
+								activeOpacity={0.8}
+							>
+								<View style={styles.paymentIcon}>
+									<Feather name="credit-card" size={18} color={colors.printRequest} />
+								</View>
+								<View style={styles.paymentTexts}>
+									<Text style={styles.paymentLabel}>Pay Upfront</Text>
+									<Text style={styles.paymentSubLabel}>
+										Transfer to the shop and upload your payment proof
+									</Text>
+								</View>
+								<Feather
+									name={selectedMethod === "upfront" ? "check-circle" : "circle"}
+									size={20}
+									color={selectedMethod === "upfront" ? colors.printRequest : colors.textSecondary}
+								/>
+							</TouchableOpacity>
+						</View>
 					</View>
-
-					<TouchableOpacity
-						style={[
-							styles.paymentOption,
-							styles.paymentOptionSpacing,
-							selectedMethod === "cod" && styles.paymentOptionSelected,
-							!codAllowed && styles.paymentOptionDisabled,
-						]}
-						onPress={() => setPaymentMethod("cod")}
-						disabled={!codAllowed || submitting}
-						activeOpacity={0.8}
-					>
-						<View style={[styles.paymentIcon, !codAllowed && styles.paymentIconDisabled]}>
-							<Feather
-								name="truck"
-								size={18}
-								color={codAllowed ? colors.printRequest : colors.textSecondary}
-							/>
-						</View>
-						<View style={styles.paymentTexts}>
-							<Text style={[styles.paymentLabel, !codAllowed && styles.paymentLabelDisabled]}>
-								Cash on Delivery
-							</Text>
-							<Text style={styles.paymentSubLabel}>{codSubLabel}</Text>
-						</View>
-						{loadingShop ? (
-							<ActivityIndicator size="small" color={colors.textSecondary} />
-						) : (
-							<Feather
-								name={selectedMethod === "cod" ? "check-circle" : "circle"}
-								size={20}
-								color={selectedMethod === "cod" ? colors.printRequest : colors.textSecondary}
-							/>
-						)}
-					</TouchableOpacity>
-					{shopLoadFailed && !loadingShop && (
-						<TouchableOpacity style={styles.codRetryButton} onPress={fetchShop} activeOpacity={0.7}>
-							<Feather name="refresh-cw" size={14} color={colors.primary} />
-							<Text style={styles.codRetryText}>Check Cash on Delivery again</Text>
-						</TouchableOpacity>
-					)}
-
-					<TouchableOpacity
-						style={[
-							styles.paymentOption,
-							selectedMethod === "upfront" && styles.paymentOptionSelected,
-						]}
-						onPress={() => setPaymentMethod("upfront")}
-						disabled={submitting}
-						activeOpacity={0.8}
-					>
-						<View style={styles.paymentIcon}>
-							<Feather name="credit-card" size={18} color={colors.printRequest} />
-						</View>
-						<View style={styles.paymentTexts}>
-							<Text style={styles.paymentLabel}>Pay Upfront</Text>
-							<Text style={styles.paymentSubLabel}>
-								Transfer to the shop and upload your payment proof
-							</Text>
-						</View>
-						<Feather
-							name={selectedMethod === "upfront" ? "check-circle" : "circle"}
-							size={20}
-							color={selectedMethod === "upfront" ? colors.printRequest : colors.textSecondary}
-						/>
-					</TouchableOpacity>
 				</View>
 			</ScrollView>
 
@@ -574,8 +691,10 @@ const styles = StyleSheet.create({
 	},
 	summaryCard: {
 		backgroundColor: colors.cardBackground,
-		borderRadius: 20,
-		padding: 24,
+		borderRadius: 16,
+		padding: 16,
+		flexDirection: "row",
+		justifyContent: "space-between",
 		alignItems: "center",
 		marginBottom: 20,
 		borderWidth: 1,
@@ -586,30 +705,52 @@ const styles = StyleSheet.create({
 		shadowRadius: 8,
 		elevation: 2,
 	},
+	summaryMain: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 12,
+		flex: 1,
+	},
 	summaryIconContainer: {
-		width: 72,
-		height: 72,
-		borderRadius: 20,
+		width: 48,
+		height: 48,
+		borderRadius: 12,
 		backgroundColor: "#FFE8E5",
 		justifyContent: "center",
 		alignItems: "center",
-		marginBottom: 16,
+	},
+	summaryTextGroup: {
+		flex: 1,
 	},
 	summaryTitle: {
-		fontSize: 22,
+		fontSize: 16,
 		fontWeight: "700",
 		color: colors.textPrimary,
-		marginBottom: 10,
-	},
-	summaryTotal: {
-		fontSize: 28,
-		fontWeight: "800",
-		color: colors.printRequest,
-		marginBottom: 6,
+		marginBottom: 2,
 	},
 	summaryDate: {
-		fontSize: 13,
+		fontSize: 12,
 		color: colors.textSecondary,
+	},
+	summaryRight: {
+		alignItems: "flex-end",
+		gap: 6,
+		maxWidth: "40%",
+	},
+	summaryTotal: {
+		fontSize: 18,
+		fontWeight: "800",
+		color: colors.printRequest,
+	},
+	shopBadge: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
+	},
+	shopBadgeText: {
+		fontSize: 11,
+		color: colors.textSecondary,
+		fontWeight: "500",
 	},
 	section: {
 		marginBottom: 20,
@@ -625,21 +766,9 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		color: colors.textPrimary,
 	},
-	commentsInput: {
-		minHeight: 96,
-		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		paddingHorizontal: 16,
-		paddingVertical: 14,
-		fontSize: 14,
-		color: colors.textPrimary,
-	},
 	card: {
 		backgroundColor: colors.cardBackground,
 		borderRadius: 16,
-		paddingHorizontal: 16,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 		shadowColor: colors.shadowLight,
@@ -647,6 +776,35 @@ const styles = StyleSheet.create({
 		shadowOpacity: 1,
 		shadowRadius: 8,
 		elevation: 2,
+	},
+	cardHeader: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		alignItems: "center",
+		paddingHorizontal: 16,
+		paddingVertical: 14,
+	},
+	cardHeaderExpanded: {
+		borderBottomWidth: 1,
+		borderBottomColor: colors.borderLight,
+	},
+	cardHeaderLeft: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	cardContent: {
+		paddingHorizontal: 16,
+		paddingBottom: 16,
+	},
+	commentsInputInner: {
+		minHeight: 96,
+		backgroundColor: colors.background,
+		borderRadius: 12,
+		paddingHorizontal: 16,
+		paddingVertical: 14,
+		fontSize: 14,
+		color: colors.textPrimary,
 	},
 	infoRow: {
 		flexDirection: "row",
@@ -713,28 +871,96 @@ const styles = StyleSheet.create({
 	totalValue: {
 		fontSize: 18,
 		fontWeight: "800",
-		color: colors.printRequest,
+		color: colors.primary,
 	},
-	fileCard: {
-		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		padding: 16,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
+	treeNodeSize: {
+		paddingVertical: 12,
+		borderBottomWidth: 1,
+		borderBottomColor: colors.borderLight,
 	},
-	fileCardSpacing: {
-		marginBottom: 12,
+	treeHeader: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		alignItems: "center",
+		marginBottom: 8,
+	},
+	treeHeaderLeft: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	treeSizeLabel: {
+		fontSize: 15,
+		fontWeight: "700",
+		color: colors.textPrimary,
+	},
+	treeNodeColor: {
+		marginLeft: 16,
+		marginTop: 8,
+		paddingLeft: 12,
+		borderLeftWidth: 1,
+		borderLeftColor: colors.borderLight,
+	},
+	treeColorHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		marginBottom: 8,
+	},
+	colorIndicator: {
+		width: 12,
+		height: 12,
+		borderRadius: 6,
+		backgroundColor: "#4A5568", // Gray for B&W
+	},
+	colorIndicatorGradient: {
+		backgroundColor: colors.primary, // Could use a gradient background in a real app, fallback to primary
+	},
+	treeColorLabel: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: colors.textSecondary,
+	},
+	treeNodeSided: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		alignItems: "center",
+		paddingVertical: 6,
+		paddingLeft: 16,
+	},
+	treeSidedLeft: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	treeSidedLabel: {
+		fontSize: 14,
+		fontWeight: "500",
+		color: colors.textPrimary,
+	},
+	treeSidedQty: {
+		fontSize: 12,
+		color: colors.textSecondary,
+	},
+	treeSidedValue: {
+		fontSize: 14,
+		fontWeight: "700",
+		color: colors.primary,
+	},
+	fileCardInner: {
+		paddingVertical: 12,
+	},
+	fileCardInnerBorder: {
+		borderBottomWidth: 1,
+		borderBottomColor: colors.borderLight,
 	},
 	fileCardHeader: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 12,
-		marginBottom: 12,
+	},
+	fileCardContent: {
+		marginTop: 12,
 	},
 	fileIcon: {
 		width: 36,
@@ -818,27 +1044,15 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		color: colors.cardBackground,
 	},
-	paymentOption: {
+	paymentOptionInner: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 12,
-		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		padding: 16,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
+		paddingVertical: 12,
 	},
-	paymentOptionSpacing: {
-		marginBottom: 12,
-	},
-	paymentOptionSelected: {
-		borderColor: colors.printRequest,
-		borderWidth: 2,
+	paymentOptionInnerBorder: {
+		borderBottomWidth: 1,
+		borderBottomColor: colors.borderLight,
 	},
 	paymentOptionDisabled: {
 		opacity: 0.6,

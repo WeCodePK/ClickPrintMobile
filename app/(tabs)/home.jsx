@@ -319,11 +319,12 @@ const HomePage = () => {
 								<Text style={styles.sectionTitle}>My Drafts</Text>
 							</View>
 							{drafts.length > 0 ? (
-								<View>
-									{drafts.map((draft) => (
+								<View style={styles.innerListContainer}>
+									{drafts.map((draft, index) => (
 										<DraftItem
 											key={draft._id}
 											draft={draft}
+											isLast={index === drafts.length - 1}
 											onPress={() => handleDraftPress(draft)}
 											onDelete={handleDeleteDraft}
 										/>
@@ -516,6 +517,10 @@ const styles = StyleSheet.create({
 		fontSize: 18,
 		fontWeight: "700",
 		color: colors.textPrimary,
+	},
+	innerListContainer: {
+		borderRadius: 12,
+		overflow: "hidden",
 	},
 });
 export default HomePage;

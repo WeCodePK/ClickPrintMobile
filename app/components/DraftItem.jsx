@@ -1,20 +1,52 @@
 import { Feather } from "@expo/vector-icons";
-import { useRef } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { colors } from "../../constants/colors";
-import { formatDate } from "../../utils/helper";
 
-// Collapse a per-file setting across the draft: a single shared value shows as
-// that value, differing values show as "Mixed".
-const summarize = (files, key, format) => {
-	const values = [...new Set(files.map((f) => f.settings?.[key]))];
-	if (values.length === 0 || values[0] === undefined) return null;
-	if (values.length > 1) return "Mixed";
-	return format(values[0]);
+const PULSE_DURATION = 1600;
+const BOB_DURATION = 900;
+
+const AnimatedFileIcon = () => {
+	const pulse = useRef(new Animated.Value(0)).current;
+	const bob = useRef(new Animated.Value(0)).current;
+
+	useEffect(() => {
+		const pulseLoop = Animated.loop(
+			Animated.sequence([
+				Animated.timing(pulse, { toValue: 1, duration: PULSE_DURATION, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+				Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+			])
+		);
+		const bobLoop = Animated.loop(
+			Animated.sequence([
+				Animated.timing(bob, { toValue: 1, duration: BOB_DURATION / 2, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+				Animated.timing(bob, { toValue: 0, duration: BOB_DURATION / 2, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+			])
+		);
+		pulseLoop.start();
+		bobLoop.start();
+		return () => {
+			pulseLoop.stop();
+			bobLoop.stop();
+		};
+	}, [pulse, bob]);
+
+	const ringScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.2] });
+	const ringOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] });
+	const translateY = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -2] });
+
+	return (
+		<View style={styles.draftIcon}>
+			<Animated.View style={[styles.iconRing, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
+			<Animated.View style={{ transform: [{ translateY }] }}>
+				<Feather name="file-text" size={18} color={colors.primary} />
+			</Animated.View>
+		</View>
+	);
 };
 
-const DraftItem = ({ draft, onPress, onDelete }) => {
+const DraftItem = ({ draft, onPress, onDelete, isLast = false }) => {
 	const swipeableRef = useRef(null);
 	const files = draft.files || [];
 	const fileCount = files.length;
@@ -29,11 +61,19 @@ const DraftItem = ({ draft, onPress, onDelete }) => {
 	const configuredFiles = files.filter((f) => f.settings && Object.keys(f.settings).length > 0);
 	const hasMissingSettings = fileCount === 0 || configuredFiles.length < fileCount;
 	const stage = hasMissingSettings ? "Add settings" : !draft.shop ? "Select shop" : "Ready";
-	const isReady = stage === "Ready";
 
-	const colorLabel = summarize(configuredFiles, "color", (v) => (v ? "Color" : "B&W"));
-	const sizeLabel = summarize(configuredFiles, "pageType", (v) => v);
-	const settingsLabel = [colorLabel, sizeLabel].filter(Boolean).join(" · ");
+	const STAGE_CONFIG = {
+		"Add settings": { label: "Add Settings", color: colors.printRequestDark, bg: "rgba(255, 139, 123, 0.16)" },
+		"Select shop": { label: "Select Shop", color: "#C28A00", bg: "rgba(245, 197, 24, 0.16)" },
+		"Ready": { label: "Ready", color: colors.primaryDark, bg: "rgba(0, 217, 163, 0.12)" },
+	};
+	const stageConfig = STAGE_CONFIG[stage] || STAGE_CONFIG["Add settings"];
+
+	// Build subtitle parts like ActiveJobCard's "who" line: "shop · files · pages"
+	const subtitleParts = [];
+	if (shopName) subtitleParts.push(shopName);
+	subtitleParts.push(`${fileCount} file${fileCount !== 1 ? "s" : ""}`);
+	if (totalPages > 0) subtitleParts.push(`${totalPages} pg`);
 
 	// A full swipe left asks to delete; the row snaps shut first, so backing out
 	// of the confirmation leaves the card in place.
@@ -58,69 +98,27 @@ const DraftItem = ({ draft, onPress, onDelete }) => {
 			friction={2}
 			overshootRight={false}
 		>
-			<View style={styles.draftCard}>
+			<View style={[styles.draftCard, isLast && styles.draftCardLast]}>
 				<TouchableOpacity style={styles.draftTouchable} onPress={onPress} activeOpacity={0.7}>
-					<View style={styles.draftIcon}>
-						<Feather name="file-text" size={18} color={colors.printRequest} />
-					</View>
+					<AnimatedFileIcon />
 
 					<View style={styles.draftInfo}>
-						{/* Name + cost */}
-						<View style={styles.titleRow}>
-							<Text style={styles.draftName} numberOfLines={1}>
-								{primaryName}
-								{extraCount > 0 && <Text style={styles.draftNameExtra}>  +{extraCount} more</Text>}
-							</Text>
-							{total > 0 && <Text style={styles.draftCost}>Rs. {total}</Text>}
-						</View>
-
-						{/* Meta line */}
-						<View style={styles.draftDetails}>
-							{draft.createdAt && (
-								<>
-									<Text style={styles.draftMeta}>{formatDate(draft.createdAt)}</Text>
-									<Text style={styles.draftDot}>•</Text>
-								</>
+						<Text style={styles.draftName} numberOfLines={1}>
+							{primaryName}
+							{extraCount > 0 && <Text style={styles.draftNameExtra}>  +{extraCount} more</Text>}
+						</Text>
+						<Text style={styles.who} numberOfLines={1}>
+							{subtitleParts[0]}
+							{subtitleParts.length > 1 && (
+								<Text style={styles.whoSecondary}> · {subtitleParts.slice(1).join(" · ")}</Text>
 							)}
-							<Text style={styles.draftMeta}>
-								{fileCount} file{fileCount !== 1 ? "s" : ""}
-							</Text>
-							{totalPages > 0 && (
-								<>
-									<Text style={styles.draftDot}>•</Text>
-									<Text style={styles.draftMeta}>
-										{totalPages} page{totalPages !== 1 ? "s" : ""}
-									</Text>
-								</>
-							)}
-						</View>
+						</Text>
+					</View>
 
-						{/* Chips */}
-						<View style={styles.chipsRow}>
-							<View style={[styles.pill, isReady ? styles.pillReady : styles.pillPending]}>
-								{isReady ? (
-									<Feather name="check-circle" size={11} color={colors.primaryDark} />
-								) : (
-									<Feather name="alert-circle" size={11} color={colors.printRequestDark} />
-								)}
-								<Text style={[styles.pillText, isReady ? styles.pillTextReady : styles.pillTextPending]}>{stage}</Text>
-							</View>
-
-							{shopName && (
-								<View style={styles.infoChip}>
-									<Feather name="map-pin" size={11} color={colors.textSecondary} />
-									<Text style={styles.infoChipText} numberOfLines={1}>
-										{shopName}
-									</Text>
-								</View>
-							)}
-
-							{settingsLabel !== "" && (
-								<View style={styles.infoChip}>
-									<Feather name="sliders" size={11} color={colors.textSecondary} />
-									<Text style={styles.infoChipText}>{settingsLabel}</Text>
-								</View>
-							)}
+					<View style={styles.side}>
+						{total > 0 && <Text style={styles.draftCost}>Rs. {total}</Text>}
+						<View style={[styles.statusBadge, { backgroundColor: stageConfig.bg }]}>
+							<Text style={[styles.statusText, { color: stageConfig.color }]}>{stageConfig.label}</Text>
 						</View>
 					</View>
 				</TouchableOpacity>
@@ -130,21 +128,26 @@ const DraftItem = ({ draft, onPress, onDelete }) => {
 };
 
 const styles = StyleSheet.create({
+	// ── Card container — matches ActiveJobCard.card exactly ──
 	draftCard: {
 		backgroundColor: colors.cardBackground,
 		paddingVertical: 12,
-		paddingHorizontal: 16,
-		flexDirection: "row",
-		alignItems: "center",
+		paddingLeft: 16,
+		paddingRight: 16,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
 	},
+	draftCardLast: {
+		borderBottomWidth: 0,
+	},
+	// ── Inner touchable — matches ActiveJobCard.touchable exactly ──
 	draftTouchable: {
-		flex: 1,
 		flexDirection: "row",
-		alignItems: "flex-start",
+		justifyContent: "space-between",
+		alignItems: "center",
 		gap: 12,
 	},
+	// ── Icon tile — matches ActiveJobCard.iconContainer exactly ──
 	draftIcon: {
 		width: 40,
 		height: 40,
@@ -153,95 +156,70 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		alignItems: "center",
 	},
+	iconRing: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		borderRadius: 10,
+		borderWidth: 2,
+		borderColor: colors.primary,
+	},
+	// ── Main info column — matches ActiveJobCard.main exactly ──
 	draftInfo: {
 		flex: 1,
+		minWidth: 0,
+		alignItems: "flex-start",
+		gap: 5,
 	},
-	titleRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: 8,
-		marginBottom: 4,
-	},
+	// ── Primary name — matches ActiveJobCard.jobCodeFallback ──
 	draftName: {
 		fontSize: 15,
-		fontWeight: "600",
+		fontWeight: "700",
 		color: colors.textPrimary,
-		flex: 1,
 	},
 	draftNameExtra: {
 		fontSize: 13,
 		fontWeight: "500",
 		color: colors.textSecondary,
 	},
-	draftCost: {
-		fontSize: 15,
-		fontWeight: "700",
-		color: colors.printRequest,
+	// ── Subtitle line — matches ActiveJobCard.who / whoSecondary ──
+	who: {
+		maxWidth: "100%",
+		fontSize: 12.5,
+		fontWeight: "600",
+		color: colors.textPrimary,
 	},
-	draftDetails: {
-		flexDirection: "row",
-		alignItems: "center",
-		flexWrap: "wrap",
-		gap: 6,
-		marginBottom: 8,
-	},
-	draftMeta: {
-		fontSize: 12,
-		color: colors.textSecondary,
-	},
-	draftDot: {
-		fontSize: 12,
-		color: colors.textSecondary,
-		opacity: 0.5,
-	},
-	chipsRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		flexWrap: "wrap",
-		gap: 6,
-	},
-	pill: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-		paddingHorizontal: 8,
-		paddingVertical: 3,
-		borderRadius: 8,
-	},
-	pillReady: {
-		backgroundColor: "rgba(0, 217, 163, 0.12)",
-	},
-	pillPending: {
-		backgroundColor: "rgba(255, 139, 123, 0.12)",
-	},
-	pillText: {
-		fontSize: 11,
-		fontWeight: "700",
-	},
-	pillTextReady: {
-		color: colors.primaryDark,
-	},
-	pillTextPending: {
-		color: colors.printRequestDark,
-	},
-	infoChip: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-		paddingHorizontal: 8,
-		paddingVertical: 3,
-		borderRadius: 8,
-		backgroundColor: colors.background,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		maxWidth: 160,
-	},
-	infoChipText: {
-		fontSize: 11,
+	whoSecondary: {
 		fontWeight: "500",
 		color: colors.textSecondary,
 	},
+	// ── Right side column — matches ActiveJobCard.side ──
+	side: {
+		alignItems: "center",
+		gap: 6,
+	},
+	// ── Price — matches ActiveJobCard.price exactly ──
+	draftCost: {
+		fontSize: 14,
+		fontWeight: "700",
+		color: colors.primary,
+		fontVariant: ["tabular-nums"],
+	},
+	// ── Status pill — matches ActiveJobCard.statusBadge / statusText ──
+	statusBadge: {
+		paddingHorizontal: 7,
+		paddingVertical: 2,
+		borderRadius: 100,
+	},
+	statusText: {
+		fontSize: 10,
+		fontWeight: "700",
+		textTransform: "uppercase",
+		letterSpacing: 0.3,
+	},
+	// ── Swipe-to-delete — matches ActiveJobCard.cancelAction ──
 	deleteAction: {
 		width: 64,
 		backgroundColor: colors.dangerDark,
