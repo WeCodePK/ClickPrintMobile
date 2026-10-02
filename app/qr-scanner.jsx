@@ -338,7 +338,6 @@ const QRScanner = () => {
 						)}
 					</View>
 				</View>
-
 				{/* Bottom section */}
 				<View style={[styles.bottomSection, { paddingBottom: 60 + insets.bottom }]}>
 					<Text style={styles.instructionText}>
