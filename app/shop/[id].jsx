@@ -96,6 +96,10 @@ const ShopDetails = () => {
 
 	//----------------------------------- RENDER -----------------------------------//
 
+	// Determine today's index (0=Mon … 6=Sun) for highlighting
+	const today = new Date().getDay();
+	const todayIndex = today === 0 ? 6 : today - 1; // JS: 0=Sun, we need 0=Mon
+
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
@@ -130,48 +134,85 @@ const ShopDetails = () => {
 							onRetry={fetchShopDetails}
 							retrying={shopQuery.isFetching}
 						/>
-						{/* Shop Header Card */}
-						<View style={styles.shopHeaderCard}>
-							{shop.imageFile ? (
-								<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.shopImage} contentFit="cover" transition={200} />
-							) : (
-								<View style={styles.shopIconContainer}>
-									<Feather name="shopping-bag" size={32} color={colors.printRequest} />
+
+						{/* ───── Shop Profile Card ───── */}
+						<View style={styles.profileCard}>
+							<View style={styles.profileRow}>
+								{shop.imageFile ? (
+									<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.profileImage} contentFit="cover" transition={200} />
+								) : (
+									<View style={styles.profileIconWrap}>
+										<Feather name="shopping-bag" size={28} color={colors.printRequest} />
+									</View>
+								)}
+								<View style={styles.profileInfo}>
+									<Text style={styles.profileName} numberOfLines={1}>{shop.name}</Text>
+									<View style={styles.profileAddressRow}>
+										<Feather name="map-pin" size={12} color={colors.textSecondary} />
+										<Text style={styles.profileAddress} numberOfLines={2}>{shop.address}</Text>
+									</View>
 								</View>
-							)}
-							<Text style={styles.shopName}>{shop.name}</Text>
-							<Text style={styles.shopAddressHeader}>{shop.address}</Text>
-							<View style={styles.onlineStatusBadge}>
-								<View style={[styles.statusDot, shop.isOnline ? styles.statusDotOnline : styles.statusDotOffline]} />
-								<Text style={[styles.statusText, shop.isOnline ? styles.statusTextOnline : styles.statusTextOffline]}>
-									{shop.isOnline ? "Online" : "Offline"}
-								</Text>
+							</View>
+							<View style={styles.profileChips}>
+								<View style={[styles.chip, shop.isOnline ? styles.chipOnline : styles.chipOffline]}>
+									<View style={[styles.chipDot, shop.isOnline ? styles.chipDotOnline : styles.chipDotOffline]} />
+									<Text style={[styles.chipText, shop.isOnline ? styles.chipTextOnline : styles.chipTextOffline]}>
+										{shop.isOnline ? "Online" : "Offline"}
+									</Text>
+								</View>
+								<View style={styles.chip}>
+									<Feather name="layers" size={12} color={colors.textSecondary} />
+									<Text style={styles.chipText}>{services.length} service{services.length !== 1 ? "s" : ""}</Text>
+								</View>
+								{Object.keys(serviceTree).length > 0 && (
+									<View style={styles.chip}>
+										<Feather name="file" size={12} color={colors.textSecondary} />
+										<Text style={styles.chipText}>{Object.keys(serviceTree).sort().join(", ")}</Text>
+									</View>
+								)}
 							</View>
 						</View>
 
-						{/* Timings Section */}
+						{/* ───── Timings Card ───── */}
 						{shop.timings && shop.timings.length > 0 && (
 							<View style={styles.section}>
 								<View style={styles.card}>
-									<TouchableOpacity 
-										style={styles.cardHeader}
+									<TouchableOpacity
+										style={[styles.cardHeader, expandedTimings && styles.cardHeaderBorder]}
 										onPress={() => setExpandedTimings(!expandedTimings)}
 										activeOpacity={0.7}
 									>
 										<View style={styles.cardHeaderLeft}>
-											<Feather name="clock" size={18} color={colors.printRequest} />
-											<Text style={styles.sectionTitle}>Timings</Text>
+											<View style={styles.headerIconWrap}>
+												<Feather name="clock" size={16} color={colors.printRequest} />
+											</View>
+											<Text style={styles.cardHeaderTitle}>Timings</Text>
 										</View>
-										<Feather name={expandedTimings ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+										<View style={styles.cardHeaderRight}>
+											{!expandedTimings && (
+												<Text style={styles.todayHint}>
+													{shop.timings[todayIndex]?.toLowerCase() === "closed" ? "Closed today" : shop.timings[todayIndex] || ""}
+												</Text>
+											)}
+											<Feather name={expandedTimings ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
+										</View>
 									</TouchableOpacity>
 									{expandedTimings && (
-										<View style={styles.cardContent}>
+										<View style={styles.cardBody}>
 											{shop.timings.map((timing, index) => {
 												const isClosed = timing.toLowerCase() === "closed";
+												const isToday = index === todayIndex;
 												return (
-													<View key={index} style={[styles.capabilityRow, index < shop.timings.length - 1 && styles.capabilityRowBorder]}>
-														<Text style={styles.dayLabel}>{DAYS_OF_WEEK[index] ?? `Day ${index + 1}`}</Text>
-														<Text style={isClosed ? styles.timingClosed : styles.timingOpen}>{isClosed ? "Closed" : timing}</Text>
+													<View key={index} style={[styles.timingRow, isToday && styles.timingRowToday, index < shop.timings.length - 1 && styles.timingRowBorder]}>
+														<View style={styles.timingDayWrap}>
+															{isToday && <View style={styles.todayDot} />}
+															<Text style={[styles.timingDay, isToday && styles.timingDayToday]}>
+																{DAYS_OF_WEEK[index] ?? `Day ${index + 1}`}
+															</Text>
+														</View>
+														<Text style={[isClosed ? styles.timingValueClosed : styles.timingValue, isToday && styles.timingValueToday]}>
+															{isClosed ? "Closed" : timing}
+														</Text>
 													</View>
 												);
 											})}
@@ -181,47 +222,53 @@ const ShopDetails = () => {
 							</View>
 						)}
 
-						{/* Services & Pricing Section */}
+						{/* ───── Services & Pricing Card ───── */}
 						<View style={styles.section}>
 							<View style={styles.card}>
-								<View style={styles.cardHeader}>
+								<View style={[styles.cardHeader, styles.cardHeaderBorder]}>
 									<View style={styles.cardHeaderLeft}>
-										<Feather name="layers" size={18} color={colors.printRequest} />
-										<Text style={styles.sectionTitle}>Services & Pricing</Text>
+										<View style={[styles.headerIconWrap, { backgroundColor: "rgba(0, 217, 163, 0.1)" }]}>
+											<Feather name="layers" size={16} color={colors.primary} />
+										</View>
+										<Text style={styles.cardHeaderTitle}>Services & Pricing</Text>
 									</View>
 								</View>
-								<View style={[styles.cardContent, { paddingTop: 16 }]}>
+								<View style={styles.cardBody}>
 									{services.length === 0 ? (
 										<Text style={styles.emptyText}>No services available</Text>
 									) : (
 										<>
-											{Object.keys(serviceTree).sort().map((size) => (
-												<View key={size} style={styles.treeNodeSize}>
-													<TouchableOpacity 
-														style={styles.treeHeader} 
+											{Object.keys(serviceTree).sort().map((size, sIdx, sArr) => (
+												<View key={size} style={[styles.sizeBlock, sIdx < sArr.length - 1 && styles.sizeBlockBorder]}>
+													<TouchableOpacity
+														style={styles.sizeRow}
 														onPress={() => toggleSize(size)}
 														activeOpacity={0.7}
 													>
-														<View style={styles.treeHeaderLeft}>
-															<Feather name="file" size={16} color={colors.textSecondary} />
-															<Text style={styles.treeSizeLabel}>{size}</Text>
+														<View style={styles.sizeRowLeft}>
+															<View style={styles.sizeIconWrap}>
+																<Feather name="file-text" size={14} color={colors.printRequest} />
+															</View>
+															<Text style={styles.sizeLabel}>{size}</Text>
 														</View>
 														<Feather name={expandedSizes[size] ? "chevron-up" : "chevron-down"} size={16} color={colors.textSecondary} />
 													</TouchableOpacity>
 
 													{expandedSizes[size] && Object.keys(serviceTree[size]).map((color) => (
-														<View key={color} style={styles.treeNodeColor}>
-															<View style={styles.treeColorHeader}>
-																<View style={[styles.colorIndicator, color === "Color" && styles.colorIndicatorGradient]} />
-																<Text style={styles.treeColorLabel}>{color}</Text>
+														<View key={color} style={styles.colorBlock}>
+															<View style={styles.colorRow}>
+																<View style={[styles.colorDot, color === "Color" ? styles.colorDotColor : styles.colorDotBW]} />
+																<Text style={styles.colorLabel}>{color}</Text>
 															</View>
 															{serviceTree[size][color].map((service) => (
-																<View key={service._id} style={styles.treeNodeSided}>
-																	<View style={styles.treeSidedLeft}>
-																		<Feather name={service.label === "Double Sided" ? "copy" : "square"} size={14} color={colors.textSecondary} />
-																		<Text style={styles.treeSidedLabel}>{service.label}</Text>
+																<View key={service._id} style={styles.sidedRow}>
+																	<View style={styles.sidedLeft}>
+																		<Feather name={service.label === "Double Sided" ? "copy" : "file"} size={13} color={colors.textSecondary} />
+																		<Text style={styles.sidedLabel}>{service.label}</Text>
 																	</View>
-																	<Text style={styles.treeSidedValue}>Rs. {service.rate}</Text>
+																	<View style={styles.priceBadge}>
+																		<Text style={styles.priceText}>Rs. {service.rate}</Text>
+																	</View>
 																</View>
 															))}
 														</View>
@@ -229,10 +276,12 @@ const ShopDetails = () => {
 												</View>
 											))}
 
-											{serviceOthers.map((service, index) => (
-												<View key={service._id} style={[styles.capabilityRow, index < serviceOthers.length - 1 && styles.capabilityRowBorder]}>
-													<Text style={styles.capabilityText}>{service.name}</Text>
-													<Text style={styles.priceValue}>Rs. {service.rate}</Text>
+											{serviceOthers.map((service) => (
+												<View key={service._id} style={styles.sidedRow}>
+													<Text style={styles.sidedLabel}>{service.name}</Text>
+													<View style={styles.priceBadge}>
+														<Text style={styles.priceText}>Rs. {service.rate}</Text>
+													</View>
 												</View>
 											))}
 										</>
@@ -240,6 +289,7 @@ const ShopDetails = () => {
 								</View>
 							</View>
 						</View>
+
 					</ScrollView>
 				</>
 			)}
@@ -320,14 +370,15 @@ const styles = StyleSheet.create({
 	},
 	scrollContent: {
 		padding: 20,
-		paddingBottom: 120,
+		paddingBottom: 40,
 	},
-	shopHeaderCard: {
+
+	/* ── Profile Card ── */
+	profileCard: {
 		backgroundColor: colors.cardBackground,
 		borderRadius: 20,
-		padding: 24,
-		alignItems: "center",
-		marginBottom: 20,
+		padding: 20,
+		marginBottom: 16,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 		shadowColor: colors.shadowLight,
@@ -336,79 +387,96 @@ const styles = StyleSheet.create({
 		shadowRadius: 8,
 		elevation: 2,
 	},
-	shopIconContainer: {
-		width: 72,
-		height: 72,
-		borderRadius: 20,
-		backgroundColor: "#FFE8E5",
-		justifyContent: "center",
+	profileRow: {
+		flexDirection: "row",
 		alignItems: "center",
-		marginBottom: 16,
+		gap: 16,
 	},
-	shopImage: {
-		width: 96,
-		height: 96,
-		borderRadius: 20,
-		marginBottom: 16,
+	profileImage: {
+		width: 64,
+		height: 64,
+		borderRadius: 16,
 		backgroundColor: colors.background,
 	},
-	shopName: {
-		fontSize: 22,
+	profileIconWrap: {
+		width: 64,
+		height: 64,
+		borderRadius: 16,
+		backgroundColor: "rgba(255, 139, 123, 0.1)",
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	profileInfo: {
+		flex: 1,
+		gap: 6,
+	},
+	profileName: {
+		fontSize: 20,
 		fontWeight: "700",
 		color: colors.textPrimary,
-		marginBottom: 6,
-		textAlign: "center",
 	},
-	shopAddressHeader: {
-		fontSize: 14,
+	profileAddressRow: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 4,
+		paddingTop: 2,
+	},
+	profileAddress: {
+		fontSize: 13,
 		color: colors.textSecondary,
-		textAlign: "center",
-		marginBottom: 16,
-		paddingHorizontal: 20,
+		flex: 1,
+		lineHeight: 18,
 	},
-	onlineStatusBadge: {
+	profileChips: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		gap: 8,
+		marginTop: 16,
+		paddingTop: 16,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
+	},
+	chip: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 6,
-		paddingHorizontal: 12,
+		paddingHorizontal: 10,
 		paddingVertical: 5,
 		borderRadius: 20,
 		backgroundColor: colors.background,
 	},
-	statusDot: {
-		width: 8,
-		height: 8,
-		borderRadius: 4,
+	chipOnline: {
+		backgroundColor: "rgba(0, 217, 163, 0.08)",
 	},
-	statusDotOnline: {
+	chipOffline: {
+		backgroundColor: colors.background,
+	},
+	chipDot: {
+		width: 6,
+		height: 6,
+		borderRadius: 3,
+	},
+	chipDotOnline: {
 		backgroundColor: colors.primary,
 	},
-	statusDotOffline: {
+	chipDotOffline: {
 		backgroundColor: colors.textSecondary,
 	},
-	statusText: {
-		fontSize: 13,
+	chipText: {
+		fontSize: 12,
 		fontWeight: "600",
-	},
-	statusTextOnline: {
-		color: colors.primary,
-	},
-	statusTextOffline: {
 		color: colors.textSecondary,
 	},
+	chipTextOnline: {
+		color: colors.primary,
+	},
+	chipTextOffline: {
+		color: colors.textSecondary,
+	},
+
+	/* ── Shared Card ── */
 	section: {
-		marginBottom: 20,
-	},
-	sectionHeader: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-		marginBottom: 12,
-	},
-	sectionTitle: {
-		fontSize: 15,
-		fontWeight: "700",
-		color: colors.textPrimary,
+		marginBottom: 16,
 	},
 	card: {
 		backgroundColor: colors.cardBackground,
@@ -420,6 +488,7 @@ const styles = StyleSheet.create({
 		shadowOpacity: 1,
 		shadowRadius: 8,
 		elevation: 2,
+		overflow: "hidden",
 	},
 	cardHeader: {
 		flexDirection: "row",
@@ -428,175 +497,192 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 		paddingVertical: 14,
 	},
-	cardHeaderExpanded: {
+	cardHeaderBorder: {
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
 	},
 	cardHeaderLeft: {
 		flexDirection: "row",
 		alignItems: "center",
+		gap: 10,
+	},
+	cardHeaderRight: {
+		flexDirection: "row",
+		alignItems: "center",
 		gap: 8,
 	},
-	cardContent: {
-		paddingHorizontal: 16,
-		paddingVertical: 16,
+	headerIconWrap: {
+		width: 32,
+		height: 32,
+		borderRadius: 10,
+		backgroundColor: "rgba(255, 139, 123, 0.1)",
+		justifyContent: "center",
+		alignItems: "center",
 	},
-	addressText: {
+	cardHeaderTitle: {
 		fontSize: 15,
-		color: colors.textPrimary,
-		lineHeight: 22,
-	},
-	walletNumber: {
-		fontSize: 20,
 		fontWeight: "700",
 		color: colors.textPrimary,
-		letterSpacing: 1,
 	},
+	cardBody: {
+		paddingHorizontal: 16,
+		paddingVertical: 12,
+	},
+	todayHint: {
+		fontSize: 12,
+		fontWeight: "500",
+		color: colors.textSecondary,
+	},
+
+	/* ── Timings ── */
+	timingRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		paddingVertical: 10,
+		paddingHorizontal: 4,
+		borderRadius: 8,
+	},
+	timingRowToday: {
+		backgroundColor: "rgba(0, 217, 163, 0.06)",
+		paddingHorizontal: 10,
+		marginHorizontal: -6,
+	},
+	timingRowBorder: {
+		borderBottomWidth: 1,
+		borderBottomColor: colors.borderLight,
+	},
+	timingDayWrap: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	todayDot: {
+		width: 6,
+		height: 6,
+		borderRadius: 3,
+		backgroundColor: colors.primary,
+	},
+	timingDay: {
+		fontSize: 14,
+		fontWeight: "500",
+		color: colors.textPrimary,
+	},
+	timingDayToday: {
+		fontWeight: "700",
+		color: colors.primary,
+	},
+	timingValue: {
+		fontSize: 13,
+		fontWeight: "500",
+		color: colors.textPrimary,
+	},
+	timingValueClosed: {
+		fontSize: 13,
+		fontWeight: "500",
+		color: colors.textSecondary,
+	},
+	timingValueToday: {
+		fontWeight: "700",
+	},
+
+	/* ── Services Tree ── */
 	emptyText: {
 		fontSize: 14,
 		color: colors.textSecondary,
 		textAlign: "center",
-		paddingVertical: 8,
+		paddingVertical: 16,
 	},
-	capabilityRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: 12,
-		paddingVertical: 12,
+	sizeBlock: {
+		paddingBottom: 8,
 	},
-	capabilityRowBorder: {
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
-	},
-	dayLabel: {
-		fontSize: 14,
-		fontWeight: "600",
-		color: colors.textPrimary,
-		flex: 1,
-	},
-	timingOpen: {
-		fontSize: 14,
-		color: colors.textPrimary,
-		fontWeight: "500",
-	},
-	timingClosed: {
-		fontSize: 14,
-		color: colors.textSecondary,
-		fontWeight: "500",
-	},
-	capabilityText: {
-		fontSize: 14,
-		color: colors.textPrimary,
-		flex: 1,
-	},
-	priceValue: {
-		fontSize: 15,
-		fontWeight: "700",
-		color: colors.printRequest,
-	},
-	treeNodeSize: {
-		marginBottom: 16,
-	},
-	treeHeader: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		paddingVertical: 12,
+	sizeBlockBorder: {
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
 		marginBottom: 8,
 	},
-	treeHeaderLeft: {
+	sizeRow: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		alignItems: "center",
+		paddingVertical: 10,
+	},
+	sizeRowLeft: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 8,
+		gap: 10,
 	},
-	treeSizeLabel: {
+	sizeIconWrap: {
+		width: 28,
+		height: 28,
+		borderRadius: 8,
+		backgroundColor: "rgba(255, 139, 123, 0.08)",
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	sizeLabel: {
 		fontSize: 16,
 		fontWeight: "700",
 		color: colors.textPrimary,
 	},
-	treeNodeColor: {
-		marginLeft: 12,
-		paddingLeft: 12,
-		borderLeftWidth: 1,
+	colorBlock: {
+		marginLeft: 14,
+		paddingLeft: 14,
+		borderLeftWidth: 2,
 		borderLeftColor: colors.borderLight,
-		marginBottom: 12,
+		marginBottom: 8,
 	},
-	treeColorHeader: {
+	colorRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
-		marginBottom: 8,
-		marginTop: 4,
+		paddingVertical: 6,
 	},
-	colorIndicator: {
-		width: 12,
-		height: 12,
-		borderRadius: 4,
+	colorDot: {
+		width: 10,
+		height: 10,
+		borderRadius: 3,
+	},
+	colorDotBW: {
 		backgroundColor: colors.textSecondary,
 	},
-	colorIndicatorGradient: {
+	colorDotColor: {
 		backgroundColor: "#3B82F6",
 	},
-	treeColorLabel: {
-		fontSize: 14,
+	colorLabel: {
+		fontSize: 13,
 		fontWeight: "600",
 		color: colors.textSecondary,
 	},
-	treeNodeSided: {
+	sidedRow: {
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "center",
 		paddingVertical: 8,
-		paddingLeft: 24,
+		paddingLeft: 22,
 	},
-	treeSidedLeft: {
+	sidedLeft: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
 	},
-	treeSidedLabel: {
+	sidedLabel: {
 		fontSize: 14,
 		fontWeight: "600",
 		color: colors.textPrimary,
 	},
-	treeSidedValue: {
-		fontSize: 14,
+	priceBadge: {
+		backgroundColor: "rgba(0, 217, 163, 0.08)",
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+		borderRadius: 8,
+	},
+	priceText: {
+		fontSize: 13,
 		fontWeight: "700",
-		color: colors.printRequest,
-	},
-	footer: {
-		position: "absolute",
-		bottom: 0,
-		left: 0,
-		right: 0,
-		backgroundColor: colors.cardBackground,
-		padding: 20,
-		paddingBottom: 28,
-		borderTopWidth: 1,
-		borderTopColor: colors.borderLight,
-		shadowColor: colors.shadowMedium,
-		shadowOffset: { width: 0, height: -4 },
-		shadowOpacity: 1,
-		shadowRadius: 12,
-		elevation: 8,
-	},
-	continueButton: {
-		backgroundColor: colors.printRequest,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		paddingVertical: 16,
-		borderRadius: 12,
-		gap: 8,
-	},
-	continueButtonText: {
-		fontSize: 16,
-		fontWeight: "700",
-		color: colors.cardBackground,
+		color: colors.primary,
 	},
 });
 
 export default ShopDetails;
+
