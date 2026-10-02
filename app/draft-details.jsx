@@ -299,8 +299,8 @@ const DraftDetails = () => {
 				return;
 			}
 			const size = isA3 ? "A3" : "A4";
-			const color = name.includes("COLOR") || name.includes("COLOUR") ? "Color" : "Black & White";
-			const sided = name.includes("DOUBLE") || name.includes("LONG") || name.includes("SHORT") ? "Double Sided" : "Single Sided";
+			const color = name.includes("COLOR") || name.includes("COLOUR") || name.includes("-CL") || name.includes(" CL") ? "Color" : "Black & White";
+			const sided = name.includes("DOUBLE") || name.includes("LONG") || name.includes("SHORT") || name.includes("-DS") || name.includes(" DS") ? "Double Sided" : "Single Sided";
 
 			if (!tree[size]) tree[size] = {};
 			if (!tree[size][color]) tree[size][color] = [];

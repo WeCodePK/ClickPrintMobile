@@ -18,8 +18,8 @@ export const DEFAULT_SETTINGS = {
 	pagesPerSheet: 1,
 	numberOfCopies: "1",
 	pageSelection: "",
-	// Double-sided by default, flipping on the edge that suits the default portrait orientation
-	sidedness: "long",
+	// Single-sided by default to prevent unexpected page halving
+	sidedness: "none",
 	duplexOverride: null,
 };
 
@@ -33,8 +33,8 @@ export const defaultDuplexFor = (orientation) => (orientation === "landscape" ? 
 export const settingsFromBackend = (s) => {
 	if (!s || Object.keys(s).length === 0) return { ...DEFAULT_SETTINGS };
 	const orientation = s.orientation ?? DEFAULT_SETTINGS.orientation;
-	// Missing sidedness defaults to double-sided on the edge matching the orientation
-	const sidedness = s.sidedness ?? defaultDuplexFor(orientation);
+	// Missing sidedness defaults to single-sided
+	const sidedness = s.sidedness ?? DEFAULT_SETTINGS.sidedness;
 	return {
 		color: s.color ? "color" : "bw",
 		pageType: s.pageType ?? DEFAULT_SETTINGS.pageType,

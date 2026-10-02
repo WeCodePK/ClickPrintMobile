@@ -3,7 +3,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import StaleDataNotice from "../../components/StaleDataNotice";
@@ -41,6 +41,29 @@ const ShopDetails = () => {
 	const servicesQuery = useServicesQuery(shopId);
 	const shop = shopQuery.data ?? null;
 	const services = servicesQuery.data ?? [];
+
+	const [expandedSizes, setExpandedSizes] = useState({});
+	const [expandedTimings, setExpandedTimings] = useState(false);
+
+	const toggleSize = (size) => {
+		setExpandedSizes((prev) => ({ ...prev, [size]: !prev[size] }));
+	};
+
+	const serviceTree = {};
+	const serviceOthers = [];
+	services.forEach((service) => {
+		if (service.keys && service.keys.pageType) {
+			const size = service.keys.pageType;
+			const color = service.keys.color ? "Color" : "Black & White";
+			const sided = service.keys.sidedness ? "Double Sided" : "Single Sided";
+
+			if (!serviceTree[size]) serviceTree[size] = {};
+			if (!serviceTree[size][color]) serviceTree[size][color] = [];
+			serviceTree[size][color].push({ ...service, label: sided });
+		} else {
+			serviceOthers.push(service);
+		}
+	});
 	const loading = shopQuery.isPending;
 	const error = shopQuery.isError && !shop ? friendlyMessage(shopQuery.error) : null;
 	const refreshFailed = (shopQuery.isError || servicesQuery.isError) && !!shop;
@@ -117,6 +140,7 @@ const ShopDetails = () => {
 								</View>
 							)}
 							<Text style={styles.shopName}>{shop.name}</Text>
+							<Text style={styles.shopAddressHeader}>{shop.address}</Text>
 							<View style={styles.onlineStatusBadge}>
 								<View style={[styles.statusDot, shop.isOnline ? styles.statusDotOnline : styles.statusDotOffline]} />
 								<Text style={[styles.statusText, shop.isOnline ? styles.statusTextOnline : styles.statusTextOffline]}>
@@ -125,78 +149,95 @@ const ShopDetails = () => {
 							</View>
 						</View>
 
-						{/* Address Section */}
-						<View style={styles.section}>
-							<View style={styles.sectionHeader}>
-								<Feather name="map-pin" size={18} color={colors.printRequest} />
-								<Text style={styles.sectionTitle}>Address</Text>
-							</View>
-							<View style={styles.card}>
-								<Text style={styles.addressText}>{shop.address}</Text>
-							</View>
-						</View>
-
 						{/* Timings Section */}
 						{shop.timings && shop.timings.length > 0 && (
 							<View style={styles.section}>
-								<View style={styles.sectionHeader}>
-									<Feather name="clock" size={18} color={colors.printRequest} />
-									<Text style={styles.sectionTitle}>Timings</Text>
-								</View>
 								<View style={styles.card}>
-									{shop.timings.map((timing, index) => {
-										const isClosed = timing.toLowerCase() === "closed";
-										return (
-											<View key={index} style={[styles.capabilityRow, index < shop.timings.length - 1 && styles.capabilityRowBorder]}>
-												<Text style={styles.dayLabel}>{DAYS_OF_WEEK[index] ?? `Day ${index + 1}`}</Text>
-												<Text style={isClosed ? styles.timingClosed : styles.timingOpen}>{isClosed ? "Closed" : timing}</Text>
-											</View>
-										);
-									})}
+									<TouchableOpacity 
+										style={styles.cardHeader}
+										onPress={() => setExpandedTimings(!expandedTimings)}
+										activeOpacity={0.7}
+									>
+										<View style={styles.cardHeaderLeft}>
+											<Feather name="clock" size={18} color={colors.printRequest} />
+											<Text style={styles.sectionTitle}>Timings</Text>
+										</View>
+										<Feather name={expandedTimings ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+									</TouchableOpacity>
+									{expandedTimings && (
+										<View style={styles.cardContent}>
+											{shop.timings.map((timing, index) => {
+												const isClosed = timing.toLowerCase() === "closed";
+												return (
+													<View key={index} style={[styles.capabilityRow, index < shop.timings.length - 1 && styles.capabilityRowBorder]}>
+														<Text style={styles.dayLabel}>{DAYS_OF_WEEK[index] ?? `Day ${index + 1}`}</Text>
+														<Text style={isClosed ? styles.timingClosed : styles.timingOpen}>{isClosed ? "Closed" : timing}</Text>
+													</View>
+												);
+											})}
+										</View>
+									)}
 								</View>
 							</View>
 						)}
 
-						{/* Capabilities Section */}
+						{/* Services & Pricing Section */}
 						<View style={styles.section}>
-							<View style={styles.sectionHeader}>
-								<Feather name="settings" size={18} color={colors.printRequest} />
-								<Text style={styles.sectionTitle}>Capabilities</Text>
-							</View>
 							<View style={styles.card}>
-								{services.length === 0 ? (
-									<Text style={styles.emptyText}>No capabilities listed</Text>
-								) : (
-									services.map((service, index) => (
-										<View key={service._id} style={[styles.capabilityRow, index < services.length - 1 && styles.capabilityRowBorder]}>
-											<Text style={styles.capabilityText}>
-												{service.keys.pageType}, {service.keys.color ? "Color" : "Black & White"}, {service.keys.sidedness ? "Double Sided" : "Single Sided"}
-											</Text>
-											
-										</View>
-									))
-								)}
-							</View>
-						</View>
+								<View style={styles.cardHeader}>
+									<View style={styles.cardHeaderLeft}>
+										<Feather name="layers" size={18} color={colors.printRequest} />
+										<Text style={styles.sectionTitle}>Services & Pricing</Text>
+									</View>
+								</View>
+								<View style={[styles.cardContent, { paddingTop: 16 }]}>
+									{services.length === 0 ? (
+										<Text style={styles.emptyText}>No services available</Text>
+									) : (
+										<>
+											{Object.keys(serviceTree).sort().map((size) => (
+												<View key={size} style={styles.treeNodeSize}>
+													<TouchableOpacity 
+														style={styles.treeHeader} 
+														onPress={() => toggleSize(size)}
+														activeOpacity={0.7}
+													>
+														<View style={styles.treeHeaderLeft}>
+															<Feather name="file" size={16} color={colors.textSecondary} />
+															<Text style={styles.treeSizeLabel}>{size}</Text>
+														</View>
+														<Feather name={expandedSizes[size] ? "chevron-up" : "chevron-down"} size={16} color={colors.textSecondary} />
+													</TouchableOpacity>
 
-						{/* Pricing Section */}
-						<View style={styles.section}>
-							<View style={styles.sectionHeader}>
-								<Feather name="tag" size={18} color={colors.printRequest} />
-								<Text style={styles.sectionTitle}>Pricing</Text>
-							</View>
-							<View style={styles.card}>
-								{services.length === 0 ? (
-									<Text style={styles.emptyText}>No pricing information available</Text>
-								) : (
-									services.map((service, index) => (
-										<View key={service._id} style={[styles.capabilityRow, index < services.length - 1 && styles.capabilityRowBorder]}>
-											
-											<Text style={styles.capabilityText}>{service.name}</Text>
-											<Text style={styles.priceValue}>Rs. {service.rate}</Text>
-										</View>
-									))
-								)}
+													{expandedSizes[size] && Object.keys(serviceTree[size]).map((color) => (
+														<View key={color} style={styles.treeNodeColor}>
+															<View style={styles.treeColorHeader}>
+																<View style={[styles.colorIndicator, color === "Color" && styles.colorIndicatorGradient]} />
+																<Text style={styles.treeColorLabel}>{color}</Text>
+															</View>
+															{serviceTree[size][color].map((service) => (
+																<View key={service._id} style={styles.treeNodeSided}>
+																	<View style={styles.treeSidedLeft}>
+																		<Feather name={service.label === "Double Sided" ? "copy" : "square"} size={14} color={colors.textSecondary} />
+																		<Text style={styles.treeSidedLabel}>{service.label}</Text>
+																	</View>
+																	<Text style={styles.treeSidedValue}>Rs. {service.rate}</Text>
+																</View>
+															))}
+														</View>
+													))}
+												</View>
+											))}
+
+											{serviceOthers.map((service, index) => (
+												<View key={service._id} style={[styles.capabilityRow, index < serviceOthers.length - 1 && styles.capabilityRowBorder]}>
+													<Text style={styles.capabilityText}>{service.name}</Text>
+													<Text style={styles.priceValue}>Rs. {service.rate}</Text>
+												</View>
+											))}
+										</>
+									)}
+								</View>
 							</View>
 						</View>
 					</ScrollView>
@@ -315,8 +356,15 @@ const styles = StyleSheet.create({
 		fontSize: 22,
 		fontWeight: "700",
 		color: colors.textPrimary,
-		marginBottom: 10,
+		marginBottom: 6,
 		textAlign: "center",
+	},
+	shopAddressHeader: {
+		fontSize: 14,
+		color: colors.textSecondary,
+		textAlign: "center",
+		marginBottom: 16,
+		paddingHorizontal: 20,
 	},
 	onlineStatusBadge: {
 		flexDirection: "row",
@@ -365,7 +413,6 @@ const styles = StyleSheet.create({
 	card: {
 		backgroundColor: colors.cardBackground,
 		borderRadius: 16,
-		padding: 16,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 		shadowColor: colors.shadowLight,
@@ -373,6 +420,26 @@ const styles = StyleSheet.create({
 		shadowOpacity: 1,
 		shadowRadius: 8,
 		elevation: 2,
+	},
+	cardHeader: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		alignItems: "center",
+		paddingHorizontal: 16,
+		paddingVertical: 14,
+	},
+	cardHeaderExpanded: {
+		borderBottomWidth: 1,
+		borderBottomColor: colors.borderLight,
+	},
+	cardHeaderLeft: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	cardContent: {
+		paddingHorizontal: 16,
+		paddingVertical: 16,
 	},
 	addressText: {
 		fontSize: 15,
@@ -396,7 +463,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		gap: 12,
-		paddingVertical: 10,
+		paddingVertical: 12,
 	},
 	capabilityRowBorder: {
 		borderBottomWidth: 1,
@@ -423,41 +490,80 @@ const styles = StyleSheet.create({
 		color: colors.textPrimary,
 		flex: 1,
 	},
-	priceCard: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		padding: 16,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
+	priceValue: {
+		fontSize: 15,
+		fontWeight: "700",
+		color: colors.printRequest,
 	},
-	priceCardSpacing: {
-		marginBottom: 12,
+	treeNodeSize: {
+		marginBottom: 16,
 	},
-	priceName: {
-		fontSize: 14,
-		fontWeight: "600",
-		color: colors.textPrimary,
-		marginBottom: 10,
-	},
-	priceRow: {
+	treeHeader: {
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "center",
+		paddingVertical: 12,
+		borderBottomWidth: 1,
+		borderBottomColor: colors.borderLight,
+		marginBottom: 8,
 	},
-	priceLabel: {
-		fontSize: 13,
+	treeHeaderLeft: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	treeSizeLabel: {
+		fontSize: 16,
+		fontWeight: "700",
+		color: colors.textPrimary,
+	},
+	treeNodeColor: {
+		marginLeft: 12,
+		paddingLeft: 12,
+		borderLeftWidth: 1,
+		borderLeftColor: colors.borderLight,
+		marginBottom: 12,
+	},
+	treeColorHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		marginBottom: 8,
+		marginTop: 4,
+	},
+	colorIndicator: {
+		width: 12,
+		height: 12,
+		borderRadius: 4,
+		backgroundColor: colors.textSecondary,
+	},
+	colorIndicatorGradient: {
+		backgroundColor: "#3B82F6",
+	},
+	treeColorLabel: {
+		fontSize: 14,
+		fontWeight: "600",
 		color: colors.textSecondary,
-		fontWeight: "500",
 	},
-	priceValue: {
-		fontSize: 15,
+	treeNodeSided: {
+		flexDirection: "row",
+		justifyContent: "space-between",
+		alignItems: "center",
+		paddingVertical: 8,
+		paddingLeft: 24,
+	},
+	treeSidedLeft: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
+	treeSidedLabel: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: colors.textPrimary,
+	},
+	treeSidedValue: {
+		fontSize: 14,
 		fontWeight: "700",
 		color: colors.printRequest,
 	},
