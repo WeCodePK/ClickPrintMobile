@@ -1,12 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import { useRef } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { colors } from "../../constants/colors";
 
-
 const DraftItem = ({ draft, onPress, onDelete, isLast = false }) => {
-	const swipeableRef = useRef(null);
 	const files = draft.files || [];
 	const fileCount = files.length;
 	const total = draft.cost?.total || 0;
@@ -34,57 +30,40 @@ const DraftItem = ({ draft, onPress, onDelete, isLast = false }) => {
 	subtitleParts.push(`${fileCount} file${fileCount !== 1 ? "s" : ""}`);
 	if (totalPages > 0) subtitleParts.push(`${totalPages} pg`);
 
-	// A full swipe left asks to delete; the row snaps shut first, so backing out
-	// of the confirmation leaves the card in place.
-	const renderDeleteAction = () => (
-		<View style={styles.deleteAction}>
-			<Feather name="trash-2" size={20} color="#fff" />
-		</View>
-	);
-
-	const handleSwipeOpen = () => {
-		swipeableRef.current?.close();
-		onDelete(draft._id);
-	};
-
 	return (
-		<ReanimatedSwipeable
-			ref={swipeableRef}
-			enabled={!!onDelete}
-			renderRightActions={renderDeleteAction}
-			onSwipeableOpen={handleSwipeOpen}
-			rightThreshold={32}
-			friction={2}
-			overshootRight={false}
-		>
-			<View style={[styles.draftCard, isLast && styles.draftCardLast]}>
-				<TouchableOpacity style={styles.draftTouchable} onPress={onPress} activeOpacity={0.7}>
-					<View style={styles.draftIcon}>
-						<Feather name="file-text" size={18} color={colors.primary} />
-					</View>
+		<View style={[styles.draftCard, isLast && styles.draftCardLast]}>
+			<TouchableOpacity
+				style={styles.draftTouchable}
+				onPress={onPress}
+				onLongPress={onDelete ? () => onDelete(draft._id) : undefined}
+				activeOpacity={0.7}
+				delayLongPress={400}
+			>
+				<View style={styles.draftIcon}>
+					<Feather name="file-text" size={18} color={colors.primary} />
+				</View>
 
-					<View style={styles.draftInfo}>
-						<Text style={styles.draftName} numberOfLines={1}>
-							{primaryName}
-							{extraCount > 0 && <Text style={styles.draftNameExtra}>  +{extraCount} more</Text>}
-						</Text>
-						<Text style={styles.who} numberOfLines={1}>
-							{subtitleParts[0]}
-							{subtitleParts.length > 1 && (
-								<Text style={styles.whoSecondary}> · {subtitleParts.slice(1).join(" · ")}</Text>
-							)}
-						</Text>
-					</View>
+				<View style={styles.draftInfo}>
+					<Text style={styles.draftName} numberOfLines={1}>
+						{primaryName}
+						{extraCount > 0 && <Text style={styles.draftNameExtra}>  +{extraCount} more</Text>}
+					</Text>
+					<Text style={styles.who} numberOfLines={1}>
+						{subtitleParts[0]}
+						{subtitleParts.length > 1 && (
+							<Text style={styles.whoSecondary}> · {subtitleParts.slice(1).join(" · ")}</Text>
+						)}
+					</Text>
+				</View>
 
-					<View style={styles.side}>
-						{total > 0 && <Text style={styles.draftCost}>Rs. {total}</Text>}
-						<View style={[styles.statusBadge, { backgroundColor: stageConfig.bg }]}>
-							<Text style={[styles.statusText, { color: stageConfig.color }]}>{stageConfig.label}</Text>
-						</View>
+				<View style={styles.side}>
+					{total > 0 && <Text style={styles.draftCost}>Rs. {total}</Text>}
+					<View style={[styles.statusBadge, { backgroundColor: stageConfig.bg }]}>
+						<Text style={[styles.statusText, { color: stageConfig.color }]}>{stageConfig.label}</Text>
 					</View>
-				</TouchableOpacity>
-			</View>
-		</ReanimatedSwipeable>
+				</View>
+			</TouchableOpacity>
+		</View>
 	);
 };
 
@@ -169,13 +148,6 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		textTransform: "uppercase",
 		letterSpacing: 0.3,
-	},
-	// ── Swipe-to-delete — matches ActiveJobCard.cancelAction ──
-	deleteAction: {
-		width: 64,
-		backgroundColor: colors.dangerDark,
-		justifyContent: "center",
-		alignItems: "center",
 	},
 });
 

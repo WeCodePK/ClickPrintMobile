@@ -1,7 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { colors } from "../../constants/colors";
 import { useShopQuery } from "../../hooks/queries";
 
@@ -95,7 +94,6 @@ const AnimatedPrinterIcon = ({ eta }) => {
 };
 
 const ActiveJobCard = ({ job, onPress, onCancel, isLast = false }) => {
-	const swipeableRef = useRef(null);
 	const canCancel = !!onCancel && CANCELLABLE_STATUSES.includes(job.status?.toLowerCase());
 	const statusConfig = STATUS_CONFIG[job.status?.toLowerCase()] || {
 		label: job.status,
@@ -109,59 +107,37 @@ const ActiveJobCard = ({ job, onPress, onCancel, isLast = false }) => {
 
 	const fileLabel = `${job.fileCount} ${job.fileCount === 1 ? "file" : "files"}`;
 
-	// Modelled on ClickPrintDesktop's JobListCard: the job code on top — the most
-	// important thing — with "shop · files" under it in a smaller font, and the
-	// price above the status on the right.
-	// A full swipe left asks to cancel; the row snaps shut first, so backing out
-	// of the confirmation leaves the card in place.
-	const renderCancelAction = () => (
-		<View style={styles.cancelAction}>
-			<Feather name="x-circle" size={20} color="#fff" />
-		</View>
-	);
-
-	const handleSwipeOpen = () => {
-		swipeableRef.current?.close();
-		onCancel(job);
-	};
-
 	return (
-		<ReanimatedSwipeable
-			ref={swipeableRef}
-			enabled={canCancel}
-			renderRightActions={renderCancelAction}
-			onSwipeableOpen={handleSwipeOpen}
-			rightThreshold={32}
-			friction={2}
-			overshootRight={false}
-		>
-			{/* The opaque background sits on this View, not the touchable, so the
-			    press fade doesn't reveal the cancel action behind the card. */}
-			<View style={[styles.card, isLast && styles.cardLast]}>
-				<TouchableOpacity style={styles.touchable} onPress={onPress} activeOpacity={0.7}>
-					<AnimatedPrinterIcon eta={job.eta ?? PLACEHOLDER_ETA} />
+		<View style={[styles.card, isLast && styles.cardLast]}>
+			<TouchableOpacity
+				style={styles.touchable}
+				onPress={onPress}
+				onLongPress={canCancel ? () => onCancel(job) : undefined}
+				activeOpacity={0.7}
+				delayLongPress={400}
+			>
+				<AnimatedPrinterIcon eta={job.eta ?? PLACEHOLDER_ETA} />
 
-					<View style={styles.main}>
-						{job.code ? (
-							<Text style={styles.jobCode}>#{job.code}</Text>
-						) : (
-							<Text style={styles.jobCodeFallback}>Print Job</Text>
-						)}
-						<Text style={styles.who} numberOfLines={1}>
-							{shopName}
-							<Text style={styles.whoSecondary}> · {fileLabel}</Text>
-						</Text>
-					</View>
+				<View style={styles.main}>
+					{job.code ? (
+						<Text style={styles.jobCode}>#{job.code}</Text>
+					) : (
+						<Text style={styles.jobCodeFallback}>Print Job</Text>
+					)}
+					<Text style={styles.who} numberOfLines={1}>
+						{shopName}
+						<Text style={styles.whoSecondary}> · {fileLabel}</Text>
+					</Text>
+				</View>
 
-					<View style={styles.side}>
-						<Text style={styles.price}>Rs. {job.cost ?? 0}</Text>
-						<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-							<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
-						</View>
+				<View style={styles.side}>
+					<Text style={styles.price}>Rs. {job.cost ?? 0}</Text>
+					<View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
+						<Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
 					</View>
-				</TouchableOpacity>
-			</View>
-		</ReanimatedSwipeable>
+				</View>
+			</TouchableOpacity>
+		</View>
 	);
 };
 
@@ -281,12 +257,7 @@ const styles = StyleSheet.create({
 		color: colors.primary,
 		fontVariant: ["tabular-nums"],
 	},
-	cancelAction: {
-		width: 64,
-		backgroundColor: colors.dangerDark,
-		justifyContent: "center",
-		alignItems: "center",
-	},
+
 });
 
 export default ActiveJobCard;
