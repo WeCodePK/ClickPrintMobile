@@ -18,7 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { colors } from "../constants/colors";
 import { queryKeys, useDraftQuery, useShopQuery } from "../hooks/queries";
 import { useRetryStatus } from "../hooks/useRetryStatus";
-import { checkDraft, submitDraft, updateDraft } from "../services/drafts";
+import { checkDraft, updateDraft } from "../services/drafts";
 import { showAlert } from "../utils/alert";
 import { documentsFromDraft, segmentsArrayFromDraft } from "../utils/draft";
 import { friendlyMessage } from "../utils/errors";
@@ -32,30 +32,24 @@ const SIDEDNESS_LABELS = {
 	short: "Double Sided (Short Edge)",
 };
 
-const SETTING_LABELS = {
-	color: "Color",
-	pageType: "Page Size",
-	orientation: "Orientation",
-	pagesPerSheet: "Pages Per Sheet",
-	numberOfCopies: "Copies",
-	pageSelection: "Page Range",
-	sidedness: "Sidedness",
+const DUPLEX_LABELS = {
+	long: "Long Edge",
+	short: "Short Edge",
 };
 
-const formatSettingValue = (key, value) => {
-	switch (key) {
-		case "color":
-			return value ? "Colored" : "Black & White";
-		case "sidedness":
-			return SIDEDNESS_LABELS[value] || value;
-		case "pageSelection":
-			return value ? value : "All pages";
-		case "orientation":
-			return String(value).charAt(0).toUpperCase() + String(value).slice(1);
-		default:
-			return String(value);
-	}
-};
+const capitalize = (value) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : "—");
+
+// Laid out row by row in a two-column grid, matching job-details.jsx
+const SETTINGS_LAYOUT = [
+	{ label: "Size", format: (s) => s.pageType ?? "—" },
+	{ label: "Orientation", format: (s) => capitalize(s.orientation) },
+	{ label: "Color", format: (s) => (s.color ? "Colored" : "Black & White") },
+	{ label: "Copies", format: (s) => s.numberOfCopies ?? "—" },
+	{ label: "Pages", format: (s) => s.pageSelection || "All" },
+	{ label: "Pages/Sheet", format: (s) => s.pagesPerSheet ?? "—" },
+	{ label: "Sides", format: (s) => (s.sidedness && s.sidedness !== "none" ? "Double" : "Single") },
+	{ label: "Duplex", format: (s) => DUPLEX_LABELS[s.sidedness] ?? "—" },
+];
 
 const formatCurrency = (amount) => `Rs. ${amount}`;
 
@@ -87,25 +81,9 @@ const DraftDetails = () => {
 	// limit, so the (cached) shop record fills those in.
 	const shopQuery = useShopQuery(shopId);
 	const shopName = draft?.shop?.name || shopQuery.data?.name || "";
-	const codLimit =
-		typeof draft?.shop?.codLimit === "number"
-			? draft.shop.codLimit
-			: typeof shopQuery.data?.codLimit === "number"
-				? shopQuery.data.codLimit
-				: null;
-	const codLimitKnown = codLimit !== null || shopQuery.isSuccess;
-	const loadingShop = !codLimitKnown && shopQuery.isFetching;
-	// The shop lookup failed (offline, timeout, server error), so whether COD is
-	// allowed is unknown — distinct from a shop that has no COD limit.
-	const shopLoadFailed = !codLimitKnown && shopQuery.isError && !shopQuery.isFetching;
-	const fetchShop = () => shopQuery.refetch();
 
-	const [paymentMethod, setPaymentMethod] = useState(null);
 	const [additionalComments, setAdditionalComments] = useState(draft?.additionalComments || "");
 	const [submitting, setSubmitting] = useState(false);
-	const [expandedFiles, setExpandedFiles] = useState({});
-	const [expandedSizes, setExpandedSizes] = useState({ A4: false, A3: false, Other: false });
-	const [expandedCostSection, setExpandedCostSection] = useState(false);
 	const [expandedFilesSection, setExpandedFilesSection] = useState(false);
 	const retry = useRetryStatus();
 
@@ -176,22 +154,7 @@ const DraftDetails = () => {
 	const cost = draft.cost || {};
 	const files = draft.files || [];
 
-	// COD is offered only while the job total stays under the shop's limit; an
-	// unknown limit (shop without one, or a failed fetch) keeps the option off.
 	const total = Number(cost.total ?? 0);
-	const codAllowed = typeof codLimit === "number" && total < codLimit;
-	// With COD unavailable there is nothing to choose, so upfront is implied.
-	const selectedMethod = codAllowed ? paymentMethod : "upfront";
-
-	const codSubLabel = loadingShop
-		? "Checking availability..."
-		: shopLoadFailed
-			? "Couldn't check availability. Check your connection."
-			: typeof codLimit !== "number"
-			? "Not available for this shop"
-			: codAllowed
-				? "Pay at the shop when you collect"
-				: `Only for orders under ${formatCurrency(codLimit)}`;
 
 	//----------------------------------- HANDLERS -----------------------------------//
 
@@ -224,17 +187,15 @@ const DraftDetails = () => {
 		queryClient.setQueryData(queryKeys.draft(draft._id), (d) => d && { ...d, cost: d.cost ?? previousCost });
 	};
 
-	// Upfront payment continues on the top-up screen, so the comments are saved
-	// here before navigating away.
-	const handlePayUpfront = async () => {
+	const handleContinue = async () => {
 		try {
 			setSubmitting(true);
 			await saveAdditionalComments();
 			router.push({
-				pathname: "/topup",
+				pathname: "/payment-option",
 				params: {
-					shopId: shopId || "",
 					draftId: draft._id,
+					shopId: shopId || "",
 					amount: String(cost.total ?? 0),
 				},
 			});
@@ -245,45 +206,6 @@ const DraftDetails = () => {
 			setSubmitting(false);
 			retry.reset();
 		}
-	};
-
-	// COD needs no payment proof, so the draft is submitted straight from here.
-	// submitDraft checks whether a lost attempt went through before retrying,
-	// so a bad connection can't create the job twice.
-	const handleCashOnDelivery = async () => {
-		try {
-			setSubmitting(true);
-			await saveAdditionalComments();
-			await submitDraft(draft._id, "cod", { onRetry: retry.onRetry });
-			showAlert("Success", "Your print job has been submitted! Pay the shop on collection.", [
-				{
-					text: "OK",
-					onPress: () => router.replace("/(tabs)/home"),
-				},
-			]);
-		} catch (err) {
-			console.error("Error submitting job:", err);
-			showAlert("Couldn't submit the job", friendlyMessage(err, "Failed to submit draft. Please try again."));
-		} finally {
-			setSubmitting(false);
-			retry.reset();
-		}
-	};
-
-	const handleContinue = () => {
-		if (selectedMethod === "cod") {
-			handleCashOnDelivery();
-		} else {
-			handlePayUpfront();
-		}
-	};
-
-	const toggleFile = (id) => {
-		setExpandedFiles((prev) => ({ ...prev, [id]: !prev[id] }));
-	};
-
-	const toggleSize = (size) => {
-		setExpandedSizes((prev) => ({ ...prev, [size]: !prev[size] }));
 	};
 
 	// Group cost lines into a tree: Size -> Color -> Sidedness
@@ -328,38 +250,7 @@ const DraftDetails = () => {
 				contentContainerStyle={styles.scrollContent}
 				keyboardShouldPersistTaps="handled"
 			>
-				{/* Summary Card */}
-				<View style={styles.summaryCard}>
-					<View style={styles.summaryMain}>
-						<View style={styles.summaryIconContainer}>
-							<Feather name="file-text" size={20} color={colors.printRequest} />
-						</View>
-						<View style={styles.summaryTextGroup}>
-							<Text style={styles.summaryTitle}>Draft Created</Text>
-							<Text style={styles.summaryDate}>{files.length} file{files.length !== 1 ? "s" : ""}</Text>
-						</View>
-					</View>
-					<View style={styles.summaryRight}>
-						{needsPrice ? (
-							pricingError ? (
-								<TouchableOpacity style={styles.codRetryButton} onPress={priceDraft} activeOpacity={0.7}>
-									<Feather name="refresh-cw" size={12} color={colors.primary} />
-									<Text style={styles.codRetryText}>Retry</Text>
-								</TouchableOpacity>
-							) : (
-								<ActivityIndicator size="small" color={colors.primary} style={styles.pricingSpinner} />
-							)
-						) : (
-							<Text style={styles.summaryTotal}>{formatCurrency(cost.total ?? 0)}</Text>
-						)}
-						<View style={styles.shopBadge}>
-							<Feather name="map-pin" size={10} color={colors.textSecondary} />
-							<Text style={styles.shopBadgeText} numberOfLines={1}>{shopName || "Loading..."}</Text>
-						</View>
-					</View>
-				</View>
-
-				{/* Additional Comments */}
+				{/* Additional Comments — now on top */}
 				<View style={styles.section}>
 					<View style={styles.card}>
 						<View style={[styles.cardHeader, styles.cardHeaderExpanded]}>
@@ -387,225 +278,126 @@ const DraftDetails = () => {
 					</View>
 				</View>
 
-				{/* Cost Breakdown */}
-				<View style={styles.section}>
-					<View style={styles.card}>
-						<TouchableOpacity 
-							style={[styles.cardHeader, expandedCostSection && styles.cardHeaderExpanded]}
-							onPress={() => setExpandedCostSection(!expandedCostSection)}
-							activeOpacity={0.7}
-						>
-							<View style={styles.cardHeaderLeft}>
-								<Feather name="dollar-sign" size={18} color={colors.printRequest} />
-								<Text style={styles.sectionTitle}>Cost Breakdown</Text>
-							</View>
-							<Feather name={expandedCostSection ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
-						</TouchableOpacity>
-						
-						{expandedCostSection && (
-							<View style={styles.cardContent}>
-								{Object.keys(costTree).sort().map((size) => (
-									<View key={size} style={styles.treeNodeSize}>
-										<TouchableOpacity 
-											style={styles.treeHeader} 
-											onPress={() => toggleSize(size)}
-											activeOpacity={0.7}
-										>
-											<View style={styles.treeHeaderLeft}>
-												<Feather name="file" size={16} color={colors.textSecondary} />
-												<Text style={styles.treeSizeLabel}>{size}</Text>
-											</View>
-											<Feather name={expandedSizes[size] ? "chevron-up" : "chevron-down"} size={16} color={colors.textSecondary} />
-										</TouchableOpacity>
-
-										{expandedSizes[size] && Object.keys(costTree[size]).map((color) => (
-											<View key={color} style={styles.treeNodeColor}>
-												<View style={styles.treeColorHeader}>
-													<View style={[styles.colorIndicator, color === "Color" && styles.colorIndicatorGradient]} />
-													<Text style={styles.treeColorLabel}>{color}</Text>
-												</View>
-												{costTree[size][color].map((line, idx) => (
-													<View key={idx} style={styles.treeNodeSided}>
-														<View style={styles.treeSidedLeft}>
-															<Feather name={line.label === "Double Sided" ? "copy" : "square"} size={14} color={colors.textSecondary} />
-															<Text style={styles.treeSidedLabel}>{line.label}</Text>
-															<Text style={styles.treeSidedQty}>({line.quantity})</Text>
-														</View>
-														<Text style={styles.treeSidedValue}>{formatCurrency(line.subtotal)}</Text>
-													</View>
-												))}
-											</View>
-										))}
-									</View>
-								))}
-
-								{/* Other items not matching standard patterns */}
-								{costOthers.map((line, index) => (
-									<View key={`other-${index}`} style={styles.costRow}>
-										<View style={styles.costRowLeft}>
-											<Text style={styles.costLabel}>{line.item}</Text>
-											<Text style={styles.costSubLabel}>{line.quantity} × {formatCurrency(line.rate)}</Text>
-										</View>
-										<Text style={styles.costValue}>{formatCurrency(line.subtotal)}</Text>
-									</View>
-								))}
-
-								{(cost.extra || []).map((extra, index) => (
-									<View key={`extra-${index}`} style={styles.costRow}>
-										<View style={styles.costRowLeft}>
-											<Text style={styles.costLabel}>{extra.item}</Text>
-										</View>
-										<Text style={styles.costValue}>{formatCurrency(extra.subtotal)}</Text>
-									</View>
-								))}
-								<View style={[styles.totalRow, { paddingBottom: 0 }]}>
-									<Text style={styles.totalLabel}>Total</Text>
-									<Text style={styles.totalValue}>{formatCurrency(cost.total ?? 0)}</Text>
-								</View>
-							</View>
-						)}
-					</View>
-				</View>
-
-				{/* Files Section */}
-				<View style={styles.section}>
-					<View style={styles.card}>
-						<TouchableOpacity 
-							style={[styles.cardHeader, expandedFilesSection && styles.cardHeaderExpanded]}
-							onPress={() => setExpandedFilesSection(!expandedFilesSection)}
-							activeOpacity={0.7}
-						>
-							<View style={styles.cardHeaderLeft}>
-								<Feather name="file-text" size={18} color={colors.printRequest} />
-								<Text style={styles.sectionTitle}>Files ({files.length})</Text>
-							</View>
-							<Feather name={expandedFilesSection ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
-						</TouchableOpacity>
-
-						{expandedFilesSection && (
-							<View style={styles.cardContent}>
-								{files.map((fileEntry, index) => {
-									const key = `${fileEntry.file?._id || fileEntry.file}-${index}`;
-									const isExpanded = expandedFiles[key];
-									return (
-										<View key={key} style={[styles.fileCardInner, index < files.length - 1 && styles.fileCardInnerBorder]}>
-											<TouchableOpacity 
-												style={styles.fileCardHeader}
-												onPress={() => toggleFile(key)}
-												activeOpacity={0.7}
-											>
-												<View style={styles.fileIcon}>
-													<Feather name="file" size={16} color={colors.printRequest} />
-												</View>
-												<View style={styles.fileCardHeaderText}>
-													<Text style={styles.fileLabel}>{fileEntry.file?.name || `File ${index + 1}`}</Text>
-												</View>
-												<Feather name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
-											</TouchableOpacity>
-
-											{isExpanded && (
-												<View style={styles.fileCardContent}>
-													<View style={styles.settingsDivider} />
-													{Object.entries(fileEntry.settings || {}).map(([sKey, value], i, arr) => (
-														<View key={sKey} style={[styles.settingRow, i < arr.length - 1 && styles.settingRowBorder]}>
-															<Text style={styles.settingLabel}>{SETTING_LABELS[sKey] || sKey}</Text>
-															<Text style={styles.settingValue}>{formatSettingValue(sKey, value)}</Text>
-														</View>
-													))}
-												</View>
-											)}
-										</View>
-									);
-								})}
-							</View>
-						)}
-					</View>
-				</View>
-
-				{/* Payment Method */}
+				{/* Cost Breakdown — always expanded, no toggle */}
 				<View style={styles.section}>
 					<View style={styles.card}>
 						<View style={[styles.cardHeader, styles.cardHeaderExpanded]}>
 							<View style={styles.cardHeaderLeft}>
-								<Feather name="credit-card" size={18} color={colors.printRequest} />
-								<Text style={styles.sectionTitle}>Payment Method</Text>
+								<Feather name="dollar-sign" size={18} color={colors.printRequest} />
+								<Text style={styles.sectionTitle}>Cost Breakdown</Text>
+							</View>
+							{needsPrice && (
+								pricingError ? (
+									<TouchableOpacity style={styles.pricingRetryButton} onPress={priceDraft} activeOpacity={0.7}>
+										<Feather name="refresh-cw" size={12} color={colors.primary} />
+										<Text style={styles.pricingRetryText}>Retry</Text>
+									</TouchableOpacity>
+								) : (
+									<ActivityIndicator size="small" color={colors.primary} />
+								)
+							)}
+						</View>
+						
+						<View style={styles.cardContent}>
+							{Object.keys(costTree).sort().map((size) => (
+								<View key={size} style={styles.treeNodeSize}>
+									<View style={styles.treeHeader}>
+										<View style={styles.treeHeaderLeft}>
+											<Feather name="file" size={16} color={colors.textSecondary} />
+											<Text style={styles.treeSizeLabel}>{size}</Text>
+										</View>
+									</View>
+
+									{Object.keys(costTree[size]).map((color) => (
+										<View key={color} style={styles.treeNodeColor}>
+											<View style={styles.treeColorHeader}>
+												<View style={[styles.colorIndicator, color === "Color" && styles.colorIndicatorGradient]} />
+												<Text style={styles.treeColorLabel}>{color}</Text>
+											</View>
+											{costTree[size][color].map((line, idx) => (
+												<View key={idx} style={styles.treeNodeSided}>
+													<View style={styles.treeSidedLeft}>
+														<Feather name={line.label === "Double Sided" ? "copy" : "square"} size={14} color={colors.textSecondary} />
+														<Text style={styles.treeSidedLabel}>{line.label}</Text>
+														<Text style={styles.treeSidedQty}>({line.quantity})</Text>
+													</View>
+													<Text style={styles.treeSidedValue}>{formatCurrency(line.subtotal)}</Text>
+												</View>
+											))}
+										</View>
+									))}
+								</View>
+							))}
+
+							{/* Other items not matching standard patterns */}
+							{costOthers.map((line, index) => (
+								<View key={`other-${index}`} style={styles.costRow}>
+									<View style={styles.costRowLeft}>
+										<Text style={styles.costLabel}>{line.item}</Text>
+										<Text style={styles.costSubLabel}>{line.quantity} × {formatCurrency(line.rate)}</Text>
+									</View>
+									<Text style={styles.costValue}>{formatCurrency(line.subtotal)}</Text>
+								</View>
+							))}
+
+							{(cost.extra || []).map((extra, index) => (
+								<View key={`extra-${index}`} style={styles.costRow}>
+									<View style={styles.costRowLeft}>
+										<Text style={styles.costLabel}>{extra.item}</Text>
+									</View>
+									<Text style={styles.costValue}>{formatCurrency(extra.subtotal)}</Text>
+								</View>
+							))}
+							<View style={[styles.totalRow, { paddingBottom: 0 }]}>
+								<Text style={styles.totalLabel}>Total</Text>
+								<Text style={styles.totalValue}>{formatCurrency(cost.total ?? 0)}</Text>
 							</View>
 						</View>
-
-						<View style={styles.cardContent}>
-							<TouchableOpacity
-								style={[
-									styles.paymentOptionInner,
-									styles.paymentOptionInnerBorder,
-									!codAllowed && styles.paymentOptionDisabled,
-								]}
-								onPress={() => setPaymentMethod("cod")}
-								disabled={!codAllowed || submitting}
-								activeOpacity={0.8}
-							>
-								<View style={[styles.paymentIcon, !codAllowed && styles.paymentIconDisabled]}>
-									<Feather
-										name="truck"
-										size={18}
-										color={codAllowed ? colors.printRequest : colors.textSecondary}
-									/>
-								</View>
-								<View style={styles.paymentTexts}>
-									<Text style={[styles.paymentLabel, !codAllowed && styles.paymentLabelDisabled]}>
-										Cash on Delivery
-									</Text>
-									<Text style={styles.paymentSubLabel}>{codSubLabel}</Text>
-								</View>
-								{loadingShop ? (
-									<ActivityIndicator size="small" color={colors.textSecondary} />
-								) : (
-									<Feather
-										name={selectedMethod === "cod" ? "check-circle" : "circle"}
-										size={20}
-										color={selectedMethod === "cod" ? colors.printRequest : colors.textSecondary}
-									/>
-								)}
-							</TouchableOpacity>
-
-							{shopLoadFailed && !loadingShop && (
-								<TouchableOpacity style={styles.codRetryButton} onPress={fetchShop} activeOpacity={0.7}>
-									<Feather name="refresh-cw" size={14} color={colors.primary} />
-									<Text style={styles.codRetryText}>Check Cash on Delivery again</Text>
-								</TouchableOpacity>
-							)}
-
-							<TouchableOpacity
-								style={styles.paymentOptionInner}
-								onPress={() => setPaymentMethod("upfront")}
-								disabled={submitting}
-								activeOpacity={0.8}
-							>
-								<View style={styles.paymentIcon}>
-									<Feather name="credit-card" size={18} color={colors.printRequest} />
-								</View>
-								<View style={styles.paymentTexts}>
-									<Text style={styles.paymentLabel}>Pay Upfront</Text>
-									<Text style={styles.paymentSubLabel}>
-										Transfer to the shop and upload your payment proof
-									</Text>
-								</View>
-								<Feather
-									name={selectedMethod === "upfront" ? "check-circle" : "circle"}
-									size={20}
-									color={selectedMethod === "upfront" ? colors.printRequest : colors.textSecondary}
-								/>
-							</TouchableOpacity>
-						</View>
 					</View>
+				</View>
+
+				{/* Files Section — matching job-details.jsx style */}
+				<View style={styles.section}>
+					<View style={styles.sectionHeader}>
+						<Feather name="file-text" size={18} color={colors.printRequest} />
+						<Text style={styles.sectionTitle}>Files ({files.length})</Text>
+					</View>
+					{files.map((fileEntry, index) => {
+						const pages = fileEntry.file?.numberOfPages;
+						return (
+							<View key={fileEntry.file?._id ?? index} style={[styles.fileCard, index < files.length - 1 && styles.fileCardSpacing]}>
+								<View style={styles.fileCardHeader}>
+									<View style={styles.fileIndex}>
+										<Text style={styles.fileIndexText}>{index + 1}</Text>
+									</View>
+									<Text style={styles.fileLabel} numberOfLines={1}>
+										{fileEntry.file?.name || `File ${index + 1}`}
+									</Text>
+									{pages != null && (
+										<Text style={styles.fileMeta}> · {pages} page{pages !== 1 ? "s" : ""}</Text>
+									)}
+								</View>
+
+								<View style={styles.settingsGrid}>
+									{SETTINGS_LAYOUT.map(({ label, format }) => (
+										<View key={label} style={styles.settingCell}>
+											<Text style={styles.settingLabel}>{label}</Text>
+											<Text style={styles.settingValue}>{format(fileEntry.settings || {})}</Text>
+										</View>
+									))}
+								</View>
+							</View>
+						);
+					})}
 				</View>
 			</ScrollView>
 
 			{/* Footer Continue Button */}
 			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
 				<TouchableOpacity
-					style={[styles.submitButton, (!selectedMethod || submitting || needsPrice) && styles.submitButtonDisabled]}
+					style={[styles.submitButton, (submitting || needsPrice) && styles.submitButtonDisabled]}
 					onPress={handleContinue}
-					disabled={!selectedMethod || submitting || needsPrice}
+					disabled={submitting || needsPrice}
 				>
 					{submitting ? (
 						<>
@@ -614,13 +406,7 @@ const DraftDetails = () => {
 						</>
 					) : (
 						<>
-							<Text style={styles.submitButtonText}>
-								{!selectedMethod
-									? "Select a Payment Method"
-									: selectedMethod === "cod"
-										? "Submit Job"
-										: "Pay Upfront"}
-							</Text>
+							<Text style={styles.submitButtonText}>Continue to Payment</Text>
 							<Feather name="arrow-right" size={20} color={colors.cardBackground} />
 						</>
 					)}
@@ -688,69 +474,6 @@ const styles = StyleSheet.create({
 	scrollContent: {
 		padding: 20,
 		paddingBottom: 140,
-	},
-	summaryCard: {
-		backgroundColor: colors.cardBackground,
-		borderRadius: 16,
-		padding: 16,
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		marginBottom: 20,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
-	},
-	summaryMain: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 12,
-		flex: 1,
-	},
-	summaryIconContainer: {
-		width: 48,
-		height: 48,
-		borderRadius: 12,
-		backgroundColor: "#FFE8E5",
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	summaryTextGroup: {
-		flex: 1,
-	},
-	summaryTitle: {
-		fontSize: 16,
-		fontWeight: "700",
-		color: colors.textPrimary,
-		marginBottom: 2,
-	},
-	summaryDate: {
-		fontSize: 12,
-		color: colors.textSecondary,
-	},
-	summaryRight: {
-		alignItems: "flex-end",
-		gap: 6,
-		maxWidth: "40%",
-	},
-	summaryTotal: {
-		fontSize: 18,
-		fontWeight: "800",
-		color: colors.printRequest,
-	},
-	shopBadge: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 4,
-	},
-	shopBadgeText: {
-		fontSize: 11,
-		color: colors.textSecondary,
-		fontWeight: "500",
 	},
 	section: {
 		marginBottom: 20,
@@ -947,60 +670,72 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		color: colors.primary,
 	},
-	fileCardInner: {
-		paddingVertical: 12,
+	pricingRetryButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		paddingVertical: 4,
+		paddingHorizontal: 8,
 	},
-	fileCardInnerBorder: {
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
+	pricingRetryText: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: colors.primary,
+	},
+	// File card styles — matching job-details.jsx
+	fileCard: {
+		backgroundColor: colors.cardBackground,
+		borderRadius: 12,
+		padding: 12,
+	},
+	fileCardSpacing: {
+		marginBottom: 8,
 	},
 	fileCardHeader: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
 	},
-	fileCardContent: {
-		marginTop: 12,
-	},
-	fileIcon: {
-		width: 36,
-		height: 36,
-		borderRadius: 10,
-		backgroundColor: "#FFE8E5",
-		justifyContent: "center",
+	fileIndex: {
+		flexShrink: 0,
+		minWidth: 22,
+		height: 22,
+		paddingHorizontal: 6,
+		borderRadius: 11,
+		marginRight: 8,
+		backgroundColor: "rgba(0, 217, 163, 0.12)",
 		alignItems: "center",
+		justifyContent: "center",
 	},
-	fileCardHeaderText: {
-		flex: 1,
+	fileIndexText: {
+		fontSize: 12,
+		fontWeight: "700",
+		color: colors.primaryDark,
 	},
 	fileLabel: {
+		flexShrink: 1,
 		fontSize: 14,
 		fontWeight: "700",
 		color: colors.textPrimary,
-		marginBottom: 2,
 	},
-	fileHash: {
-		fontSize: 11,
+	fileMeta: {
+		flexShrink: 0,
+		fontSize: 12,
 		color: colors.textSecondary,
-		fontFamily: "monospace",
+		fontWeight: "500",
 	},
-	settingsDivider: {
-		height: 1,
-		backgroundColor: colors.borderLight,
-		marginBottom: 12,
-	},
-	settingRow: {
+	settingsGrid: {
 		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		paddingVertical: 9,
+		flexWrap: "wrap",
+		marginTop: 8,
+		paddingLeft: 30,
+		rowGap: 8,
 	},
-	settingRowBorder: {
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
+	settingCell: {
+		width: "50%",
+		paddingRight: 8,
 	},
 	settingLabel: {
-		fontSize: 13,
+		fontSize: 11,
 		color: colors.textSecondary,
 		fontWeight: "500",
 	},
@@ -1008,8 +743,6 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: "600",
 		color: colors.textPrimary,
-		textAlign: "right",
-		maxWidth: "55%",
 	},
 	footer: {
 		position: "absolute",
@@ -1043,63 +776,6 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 		fontWeight: "700",
 		color: colors.cardBackground,
-	},
-	paymentOptionInner: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 12,
-		paddingVertical: 12,
-	},
-	paymentOptionInnerBorder: {
-		borderBottomWidth: 1,
-		borderBottomColor: colors.borderLight,
-	},
-	paymentOptionDisabled: {
-		opacity: 0.6,
-	},
-	paymentIcon: {
-		width: 36,
-		height: 36,
-		borderRadius: 10,
-		backgroundColor: "#FFE8E5",
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	paymentIconDisabled: {
-		backgroundColor: colors.background,
-	},
-	paymentTexts: {
-		flex: 1,
-	},
-	paymentLabel: {
-		fontSize: 15,
-		fontWeight: "600",
-		color: colors.textPrimary,
-	},
-	paymentLabelDisabled: {
-		color: colors.textSecondary,
-	},
-	pricingSpinner: {
-		marginVertical: 8,
-	},
-	codRetryButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		alignSelf: "flex-start",
-		gap: 6,
-		paddingVertical: 6,
-		marginTop: -4,
-		marginBottom: 8,
-	},
-	codRetryText: {
-		fontSize: 13,
-		fontWeight: "600",
-		color: colors.primary,
-	},
-	paymentSubLabel: {
-		fontSize: 12,
-		color: colors.textSecondary,
-		marginTop: 2,
 	},
 });
 
