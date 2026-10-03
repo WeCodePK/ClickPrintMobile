@@ -9,7 +9,7 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, shrink-to-fit=no, viewport-fit=cover" />
     <title>ClickPrint</title>
 
     <!-- PWA. This file is served as-is by the dev server, so it carries the
@@ -57,6 +57,27 @@
         margin: 0;
         background-color: #F7F8FA;
       }
+
+      /* ── Global: disable text selection everywhere except form fields ── */
+      * {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      input, textarea, [contenteditable="true"] {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+      }
+
+      /* ── Global: disable zoom via touch-action ── */
+      html {
+        touch-action: pan-x pan-y;
+        -ms-touch-action: pan-x pan-y;
+      }
     </style>
 
     <script>
@@ -71,6 +92,40 @@
       });
       window.addEventListener('appinstalled', function () {
         window.__bipEvent = null;
+      });
+
+      // ── Prevent zoom gestures ──────────────────────────────────────────
+      // 1. Block pinch-to-zoom (multi-touch gesture)
+      document.addEventListener('touchmove', function (e) {
+        if (e.touches.length > 1) { e.preventDefault(); }
+      }, { passive: false });
+
+      // 2. Block Ctrl/Cmd + scroll-wheel zoom
+      document.addEventListener('wheel', function (e) {
+        if (e.ctrlKey || e.metaKey) { e.preventDefault(); }
+      }, { passive: false });
+
+      // 3. Block Ctrl/Cmd + plus/minus/zero keyboard zoom
+      document.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+          e.preventDefault();
+        }
+      });
+
+      // 4. Block double-tap zoom on touch devices
+      (function () {
+        var lastTap = 0;
+        document.addEventListener('touchend', function (e) {
+          var now = Date.now();
+          if (now - lastTap < 300) { e.preventDefault(); }
+          lastTap = now;
+        }, { passive: false });
+      })();
+
+      // 5. Block long-press context menu (the "Web Search" popup)
+      document.addEventListener('contextmenu', function (e) {
+        var tag = e.target && e.target.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA') { e.preventDefault(); }
       });
     </script>
   </head>

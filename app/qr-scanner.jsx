@@ -54,6 +54,36 @@ const QRScanner = () => {
 	const [scanError, setScanError] = useState(null); // { title, message }
 	const scanLineAnim = useRef(new Animated.Value(0)).current;
 	const hasProcessedRef = useRef(false);
+	const cameraRef = useRef(null);
+	// Keep a ref to the active video track so we can toggle torch on web.
+	const videoTrackRef = useRef(null);
+
+	// On web, expo-camera's enableTorch prop is a no-op. We grab the
+	// underlying MediaStream track and apply the torch constraint directly.
+	const toggleTorch = useCallback(async () => {
+		const next = !torchOn;
+		setTorchOn(next);
+
+		if (Platform.OS !== "web") return; // native handled by enableTorch prop
+
+		try {
+			// Locate the track: either cached, or find it from the <video> element.
+			let track = videoTrackRef.current;
+			if (!track || track.readyState !== "live") {
+				const video = document.querySelector("video");
+				if (video && video.srcObject) {
+					const tracks = video.srcObject.getVideoTracks();
+					track = tracks[0] || null;
+					videoTrackRef.current = track;
+				}
+			}
+			if (track) {
+				await track.applyConstraints({ advanced: [{ torch: next }] });
+			}
+		} catch (err) {
+			console.warn("Torch toggle failed:", err);
+		}
+	}, [torchOn]);
 
 	// Animated scan line
 	useState(() => {
@@ -286,6 +316,7 @@ const QRScanner = () => {
 	return (
 		<View style={styles.container}>
 			<CameraView
+				ref={cameraRef}
 				style={StyleSheet.absoluteFill}
 				facing="back"
 				enableTorch={torchOn}
@@ -303,7 +334,7 @@ const QRScanner = () => {
 					<Text style={styles.topBarTitle}>Scan QR Code</Text>
 					<TouchableOpacity
 						style={[styles.topBarButton, torchOn && styles.topBarButtonActive]}
-						onPress={() => setTorchOn((prev) => !prev)}
+						onPress={toggleTorch}
 						activeOpacity={0.8}
 					>
 						<Feather name={torchOn ? "zap" : "zap-off"} size={20} color="#fff" />

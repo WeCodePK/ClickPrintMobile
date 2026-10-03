@@ -1,53 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import { useEffect, useRef } from "react";
-import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { colors } from "../../constants/colors";
 
-const PULSE_DURATION = 1600;
-const BOB_DURATION = 900;
-
-const AnimatedFileIcon = () => {
-	const pulse = useRef(new Animated.Value(0)).current;
-	const bob = useRef(new Animated.Value(0)).current;
-
-	useEffect(() => {
-		const pulseLoop = Animated.loop(
-			Animated.sequence([
-				Animated.timing(pulse, { toValue: 1, duration: PULSE_DURATION, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-				Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
-			])
-		);
-		const bobLoop = Animated.loop(
-			Animated.sequence([
-				Animated.timing(bob, { toValue: 1, duration: BOB_DURATION / 2, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-				Animated.timing(bob, { toValue: 0, duration: BOB_DURATION / 2, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-			])
-		);
-		pulseLoop.start();
-		bobLoop.start();
-		return () => {
-			pulseLoop.stop();
-			bobLoop.stop();
-		};
-	}, [pulse, bob]);
-
-	const ringScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.2] });
-	const ringOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] });
-	const translateY = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -2] });
-
-	return (
-		<View style={styles.draftIcon}>
-			<Animated.View style={[styles.iconRing, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
-			<Animated.View style={{ transform: [{ translateY }] }}>
-				<Feather name="file-text" size={18} color={colors.primary} />
-			</Animated.View>
-		</View>
-	);
-};
-
 const DraftItem = ({ draft, onPress, onDelete, isLast = false }) => {
-	const swipeableRef = useRef(null);
 	const files = draft.files || [];
 	const fileCount = files.length;
 	const total = draft.cost?.total || 0;
@@ -75,55 +30,40 @@ const DraftItem = ({ draft, onPress, onDelete, isLast = false }) => {
 	subtitleParts.push(`${fileCount} file${fileCount !== 1 ? "s" : ""}`);
 	if (totalPages > 0) subtitleParts.push(`${totalPages} pg`);
 
-	// A full swipe left asks to delete; the row snaps shut first, so backing out
-	// of the confirmation leaves the card in place.
-	const renderDeleteAction = () => (
-		<View style={styles.deleteAction}>
-			<Feather name="trash-2" size={20} color="#fff" />
-		</View>
-	);
-
-	const handleSwipeOpen = () => {
-		swipeableRef.current?.close();
-		onDelete(draft._id);
-	};
-
 	return (
-		<ReanimatedSwipeable
-			ref={swipeableRef}
-			enabled={!!onDelete}
-			renderRightActions={renderDeleteAction}
-			onSwipeableOpen={handleSwipeOpen}
-			rightThreshold={32}
-			friction={2}
-			overshootRight={false}
-		>
-			<View style={[styles.draftCard, isLast && styles.draftCardLast]}>
-				<TouchableOpacity style={styles.draftTouchable} onPress={onPress} activeOpacity={0.7}>
-					<AnimatedFileIcon />
+		<View style={[styles.draftCard, isLast && styles.draftCardLast]}>
+			<TouchableOpacity
+				style={styles.draftTouchable}
+				onPress={onPress}
+				onLongPress={onDelete ? () => onDelete(draft._id) : undefined}
+				activeOpacity={0.7}
+				delayLongPress={400}
+			>
+				<View style={styles.draftIcon}>
+					<Feather name="file-text" size={18} color={colors.primary} />
+				</View>
 
-					<View style={styles.draftInfo}>
-						<Text style={styles.draftName} numberOfLines={1}>
-							{primaryName}
-							{extraCount > 0 && <Text style={styles.draftNameExtra}>  +{extraCount} more</Text>}
-						</Text>
-						<Text style={styles.who} numberOfLines={1}>
-							{subtitleParts[0]}
-							{subtitleParts.length > 1 && (
-								<Text style={styles.whoSecondary}> · {subtitleParts.slice(1).join(" · ")}</Text>
-							)}
-						</Text>
-					</View>
+				<View style={styles.draftInfo}>
+					<Text style={styles.draftName} numberOfLines={1}>
+						{primaryName}
+						{extraCount > 0 && <Text style={styles.draftNameExtra}>  +{extraCount} more</Text>}
+					</Text>
+					<Text style={styles.who} numberOfLines={1}>
+						{subtitleParts[0]}
+						{subtitleParts.length > 1 && (
+							<Text style={styles.whoSecondary}> · {subtitleParts.slice(1).join(" · ")}</Text>
+						)}
+					</Text>
+				</View>
 
-					<View style={styles.side}>
-						{total > 0 && <Text style={styles.draftCost}>Rs. {total}</Text>}
-						<View style={[styles.statusBadge, { backgroundColor: stageConfig.bg }]}>
-							<Text style={[styles.statusText, { color: stageConfig.color }]}>{stageConfig.label}</Text>
-						</View>
+				<View style={styles.side}>
+					{total > 0 && <Text style={styles.draftCost}>Rs. {total}</Text>}
+					<View style={[styles.statusBadge, { backgroundColor: stageConfig.bg }]}>
+						<Text style={[styles.statusText, { color: stageConfig.color }]}>{stageConfig.label}</Text>
 					</View>
-				</TouchableOpacity>
-			</View>
-		</ReanimatedSwipeable>
+				</View>
+			</TouchableOpacity>
+		</View>
 	);
 };
 
@@ -155,16 +95,6 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.background,
 		justifyContent: "center",
 		alignItems: "center",
-	},
-	iconRing: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		bottom: 0,
-		borderRadius: 10,
-		borderWidth: 2,
-		borderColor: colors.primary,
 	},
 	// ── Main info column — matches ActiveJobCard.main exactly ──
 	draftInfo: {
@@ -218,13 +148,6 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		textTransform: "uppercase",
 		letterSpacing: 0.3,
-	},
-	// ── Swipe-to-delete — matches ActiveJobCard.cancelAction ──
-	deleteAction: {
-		width: 64,
-		backgroundColor: colors.dangerDark,
-		justifyContent: "center",
-		alignItems: "center",
 	},
 });
 

@@ -105,9 +105,12 @@ const TopUpPage = () => {
 				quality: 0.8,
 			});
 			if (!result.canceled && result.assets?.length > 0) {
-				setPickedImage(result.assets[0]);
+				const selectedImg = result.assets[0];
+				setPickedImage(selectedImg);
 				setUploadedFile(null);
 				clearScope(proofScope);
+				// Auto-upload the screenshot once picked
+				handleUploadProof(selectedImg);
 			}
 		} catch (err) {
 			console.error("Error picking proof:", err);
@@ -116,8 +119,9 @@ const TopUpPage = () => {
 	};
 
 	// Upload payment proof to /api/files over tus, then attach it to the draft
-	const handleUploadProof = async () => {
-		if (!pickedImage) {
+	const handleUploadProof = async (imageToUpload) => {
+		const targetImage = imageToUpload || pickedImage;
+		if (!targetImage) {
 			showAlert("No image selected", "Please choose a payment screenshot to upload.");
 			return;
 		}
@@ -130,14 +134,14 @@ const TopUpPage = () => {
 			let uploadId = proofUpload?.id;
 			if (!uploadId || proofUpload.status === "failed") {
 				if (uploadId) removeUpload(uploadId);
-				const mimeType = pickedImage.mimeType || "image/jpeg";
+				const mimeType = targetImage.mimeType || "image/jpeg";
 				// The backend needs the extension in the name. Web picks give a
 				// data:/blob: uri, so fall back to the mime subtype there.
-				const uriExt = pickedImage.uri.split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1];
+				const uriExt = targetImage.uri.split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1];
 				const fileName =
-					pickedImage.fileName || `payment-proof.${uriExt || mimeType.split("/")[1] || "jpg"}`;
+					targetImage.fileName || `payment-proof.${uriExt || mimeType.split("/")[1] || "jpg"}`;
 				[uploadId] = await addUploads(proofScope, [
-					{ name: fileName, mimeType, size: pickedImage.fileSize, uri: pickedImage.uri, file: pickedImage.file },
+					{ name: fileName, mimeType, size: targetImage.fileSize, uri: targetImage.uri, file: targetImage.file },
 				]);
 			}
 			const fileRecord = await waitForUpload(uploadId, (item) =>
@@ -155,7 +159,7 @@ const TopUpPage = () => {
 			await updateDraft(draftId, { paymentProofFile: fileRecord._id });
 
 			setUploadedFile(fileRecord);
-			showAlert("Proof Uploaded", "Payment proof uploaded successfully! You can now submit your job.");
+			// Removed redundant success alert since the UI shows it's complete
 		} catch (err) {
 			console.error("Error uploading payment proof:", err);
 			// Upload errors are already user-facing; request errors get mapped.
@@ -222,20 +226,16 @@ const TopUpPage = () => {
 				style={styles.scrollView}
 				contentContainerStyle={styles.scrollContent}
 				showsVerticalScrollIndicator={false}
+				bounces={false}
 			>
 				{/* Upfront Amount Summary */}
 				<View style={styles.amountCard}>
 					<Text style={styles.amountLabel}>Total Amount to Pay</Text>
 					<Text style={styles.amountValue}>Rs. {amount}</Text>
 					{shop?.name ? <Text style={styles.amountShop}>Shop: {shop.name}</Text> : null}
-					{draft?.files?.length ? (
-						<Text style={styles.amountFiles}>
-							{draft.files.length} document{draft.files.length !== 1 ? "s" : ""}
-						</Text>
-					) : null}
 				</View>
 
-				{/* Shop Wallet Section matching screenshot */}
+				{/* Shop Wallet Section */}
 				<View style={styles.walletSection}>
 					<View style={styles.walletHeaderRow}>
 						<View style={styles.walletIconContainer}>
@@ -266,23 +266,22 @@ const TopUpPage = () => {
 						</View>
 					) : (
 						<>
-							{/* Row 1: Bank / Wallet Provider */}
-							<Text style={styles.fieldLabel}>BANK / WALLET PROVIDER</Text>
-							<View style={styles.fieldBox}>
-								<Text style={styles.fieldValue}>
-									{wallet?.bank || shop?.name || "Not specified"}
-								</Text>
+							{/* New Bank / Title layout */}
+							<View style={styles.bankAccountCard}>
+								<View style={styles.bankLogoContainer}>
+									<Feather name="briefcase" size={22} color={colors.primary} />
+								</View>
+								<View style={styles.bankDetails}>
+									<Text style={styles.bankTitle} numberOfLines={1}>
+										{wallet?.title || "Not specified"}
+									</Text>
+									<Text style={styles.bankName}>
+										{wallet?.bank || shop?.name || "Not specified"}
+									</Text>
+								</View>
 							</View>
 
-							{/* Row 2: Account Title (Separate Row) */}
-							<Text style={styles.fieldLabel}>ACCOUNT TITLE</Text>
-							<View style={styles.fieldBox}>
-								<Text style={styles.fieldValue} numberOfLines={1} ellipsizeMode="tail">
-									{wallet?.title || "Not specified"}
-								</Text>
-							</View>
-
-							{/* Row 3: IBAN / Account Number (Separate Row) */}
+							{/* IBAN / Account Number */}
 							<Text style={styles.fieldLabel}>IBAN / ACCOUNT NUMBER</Text>
 							<View style={[styles.fieldBox, styles.numberBox]}>
 								<Text style={styles.fieldValue} numberOfLines={1} ellipsizeMode="middle">
@@ -329,13 +328,18 @@ const TopUpPage = () => {
 								<Text style={styles.proofFileName} numberOfLines={1}>
 									{pickedImage.fileName || "payment-proof.jpg"}
 								</Text>
-								{uploadedFile ? (
+								{uploading ? (
+									<View style={styles.uploadedBadge}>
+										<ActivityIndicator size="small" color={colors.primary} />
+										<Text style={[styles.pendingUploadText, {marginLeft: 6}]}>{uploadStatus}</Text>
+									</View>
+								) : uploadedFile ? (
 									<View style={styles.uploadedBadge}>
 										<Feather name="check-circle" size={14} color={colors.primary} />
 										<Text style={styles.uploadedBadgeText}>Proof Uploaded</Text>
 									</View>
 								) : (
-									<Text style={styles.pendingUploadText}>Not uploaded yet</Text>
+									<Text style={styles.pendingUploadText}>Upload failed, please retry.</Text>
 								)}
 								<TouchableOpacity
 									style={styles.changeImageButton}
@@ -362,28 +366,6 @@ const TopUpPage = () => {
 						</TouchableOpacity>
 					)}
 
-					{/* Upload Payment Proof Button */}
-					{pickedImage && !uploadedFile ? (
-						<TouchableOpacity
-							style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
-							onPress={handleUploadProof}
-							disabled={uploading}
-							activeOpacity={0.8}
-						>
-							{uploading ? (
-								<>
-									<ActivityIndicator size="small" color={colors.cardBackground} />
-									{uploadStatus && <Text style={styles.uploadButtonText}>{uploadStatus}</Text>}
-								</>
-							) : (
-								<>
-									<Feather name="upload" size={18} color={colors.cardBackground} />
-									<Text style={styles.uploadButtonText}>Upload Payment Proof</Text>
-								</>
-							)}
-						</TouchableOpacity>
-					) : null}
-
 					{uploadedFile ? (
 						<View style={styles.uploadSuccessBanner}>
 							<Feather name="check" size={18} color={colors.primary} />
@@ -396,7 +378,7 @@ const TopUpPage = () => {
 			</ScrollView>
 
 			{/* Footer with Submit Job Button */}
-			<View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+			<View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
 				<TouchableOpacity
 					style={[
 						styles.submitJobButton,
@@ -435,7 +417,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 20,
-		paddingVertical: 14,
+		paddingVertical: 12,
 		backgroundColor: colors.cardBackground,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.borderLight,
@@ -458,69 +440,64 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	scrollContent: {
-		padding: 20,
-		paddingBottom: 140,
+		padding: 16,
+		paddingBottom: 120, // Reduced bottom padding for a tighter fit
 	},
 	amountCard: {
 		backgroundColor: colors.cardBackground,
-		borderRadius: 18,
-		padding: 20,
+		borderRadius: 16,
+		padding: 16,
 		alignItems: "center",
-		marginBottom: 20,
+		marginBottom: 16,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
+		shadowOffset: { width: 0, height: 1 },
 		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
+		shadowRadius: 4,
+		elevation: 1,
 	},
 	amountLabel: {
-		fontSize: 13,
+		fontSize: 12,
 		fontWeight: "600",
 		color: colors.textSecondary,
 		textTransform: "uppercase",
 		letterSpacing: 0.5,
-		marginBottom: 6,
+		marginBottom: 4,
 	},
 	amountValue: {
-		fontSize: 32,
+		fontSize: 28,
 		fontWeight: "800",
 		color: colors.textPrimary,
 	},
 	amountShop: {
-		fontSize: 14,
+		fontSize: 13,
 		fontWeight: "600",
 		color: colors.primaryDark,
-		marginTop: 6,
-	},
-	amountFiles: {
-		fontSize: 12,
-		color: colors.textSecondary,
 		marginTop: 4,
 	},
 	walletSection: {
 		backgroundColor: "#F8FAFC",
-		borderRadius: 18,
-		padding: 18,
-		marginBottom: 20,
+		borderRadius: 16,
+		padding: 16,
+		marginBottom: 16,
 		borderWidth: 1,
 		borderColor: "#E2E8F0",
 		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
+		shadowOffset: { width: 0, height: 1 },
 		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
+		shadowRadius: 4,
+		elevation: 1,
 	},
 	walletHeaderRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		marginBottom: 18,
+		marginBottom: 14,
 		gap: 12,
 	},
 	walletIconContainer: {
-		width: 44,
-		height: 44,
+		width: 40,
+		height: 40,
 		borderRadius: 12,
 		backgroundColor: "#E6FBF5",
 		borderWidth: 1,
@@ -532,18 +509,18 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	walletTitle: {
-		fontSize: 16,
+		fontSize: 15,
 		fontWeight: "700",
 		color: "#1E293B",
 	},
 	walletSubtitle: {
-		fontSize: 12,
+		fontSize: 11,
 		color: "#64748B",
 		marginTop: 2,
-		lineHeight: 16,
+		lineHeight: 14,
 	},
 	loadingShopBox: {
-		paddingVertical: 20,
+		paddingVertical: 16,
 		alignItems: "center",
 		gap: 8,
 	},
@@ -554,14 +531,47 @@ const styles = StyleSheet.create({
 	},
 	walletRetryButton: {
 		backgroundColor: colors.primary,
-		paddingHorizontal: 20,
+		paddingHorizontal: 16,
 		paddingVertical: 8,
 		borderRadius: 8,
 	},
 	walletRetryText: {
 		color: colors.cardBackground,
 		fontWeight: "600",
+		fontSize: 13,
+	},
+	bankAccountCard: {
+		flexDirection: "row",
+		alignItems: "center",
+		backgroundColor: "#FFFFFF",
+		borderRadius: 12,
+		borderWidth: 1,
+		borderColor: "#E2E8F0",
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		marginBottom: 12,
+		gap: 12,
+	},
+	bankLogoContainer: {
+		width: 42,
+		height: 42,
+		borderRadius: 21,
+		backgroundColor: "#F1F5F9",
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	bankDetails: {
+		flex: 1,
+	},
+	bankTitle: {
 		fontSize: 14,
+		fontWeight: "700",
+		color: "#1E293B",
+	},
+	bankName: {
+		fontSize: 12,
+		color: "#64748B",
+		marginTop: 2,
 	},
 	fieldLabel: {
 		fontSize: 11,
@@ -569,7 +579,7 @@ const styles = StyleSheet.create({
 		color: "#64748B",
 		letterSpacing: 0.5,
 		textTransform: "uppercase",
-		marginBottom: 6,
+		marginBottom: 4,
 	},
 	fieldBox: {
 		backgroundColor: "#FFFFFF",
@@ -577,8 +587,8 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		borderColor: "#E2E8F0",
 		paddingHorizontal: 14,
-		paddingVertical: 12,
-		marginBottom: 14,
+		paddingVertical: 10,
+		marginBottom: 10,
 		justifyContent: "center",
 	},
 	numberBox: {
@@ -598,30 +608,30 @@ const styles = StyleSheet.create({
 	supportNote: {
 		fontSize: 11,
 		color: "#94A3B8",
-		lineHeight: 16,
-		marginTop: -4,
+		lineHeight: 14,
+		marginTop: -2,
 	},
 	proofSection: {
 		backgroundColor: colors.cardBackground,
-		borderRadius: 18,
-		padding: 18,
+		borderRadius: 16,
+		padding: 16,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
 		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
+		shadowOffset: { width: 0, height: 1 },
 		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
-		marginBottom: 20,
+		shadowRadius: 4,
+		elevation: 1,
+		marginBottom: 10,
 	},
 	sectionHeader: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
-		marginBottom: 14,
+		marginBottom: 12,
 	},
 	sectionTitle: {
-		fontSize: 16,
+		fontSize: 15,
 		fontWeight: "700",
 		color: colors.textPrimary,
 	},
@@ -629,111 +639,93 @@ const styles = StyleSheet.create({
 		borderWidth: 1.5,
 		borderStyle: "dashed",
 		borderColor: colors.borderLight,
-		borderRadius: 14,
-		padding: 24,
+		borderRadius: 12,
+		padding: 20,
 		alignItems: "center",
 		backgroundColor: "#FAFBFC",
 	},
 	pickIconWrapper: {
-		width: 52,
-		height: 52,
-		borderRadius: 14,
+		width: 46,
+		height: 46,
+		borderRadius: 12,
 		backgroundColor: "rgba(0, 217, 163, 0.12)",
 		justifyContent: "center",
 		alignItems: "center",
-		marginBottom: 10,
+		marginBottom: 8,
 	},
 	pickButtonTitle: {
-		fontSize: 15,
+		fontSize: 14,
 		fontWeight: "700",
 		color: colors.textPrimary,
-		marginBottom: 4,
+		marginBottom: 2,
 	},
 	pickButtonSub: {
-		fontSize: 12,
+		fontSize: 11,
 		color: colors.textSecondary,
 		textAlign: "center",
-		lineHeight: 16,
+		lineHeight: 14,
 	},
 	proofPreviewCard: {
 		flexDirection: "row",
 		alignItems: "center",
 		backgroundColor: "#FAFBFC",
-		borderRadius: 14,
-		padding: 12,
+		borderRadius: 12,
+		padding: 10,
 		borderWidth: 1,
 		borderColor: colors.borderLight,
-		gap: 12,
+		gap: 10,
 	},
 	proofImagePreview: {
-		width: 70,
-		height: 70,
-		borderRadius: 10,
+		width: 60,
+		height: 60,
+		borderRadius: 8,
 		backgroundColor: "#E2E8F0",
 	},
 	proofDetails: {
 		flex: 1,
 	},
 	proofFileName: {
-		fontSize: 14,
+		fontSize: 13,
 		fontWeight: "600",
 		color: colors.textPrimary,
-		marginBottom: 4,
+		marginBottom: 2,
 	},
 	uploadedBadge: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 4,
 		marginTop: 2,
 	},
 	uploadedBadgeText: {
 		fontSize: 12,
 		fontWeight: "600",
 		color: colors.primary,
+		marginLeft: 4,
 	},
 	pendingUploadText: {
-		fontSize: 12,
+		fontSize: 11,
 		color: colors.textSecondary,
 		marginTop: 2,
 	},
 	changeImageButton: {
-		marginTop: 8,
+		marginTop: 6,
 	},
 	changeImageText: {
 		fontSize: 12,
 		fontWeight: "600",
 		color: colors.creditWallet,
 	},
-	uploadButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		backgroundColor: colors.printRequest,
-		borderRadius: 14,
-		paddingVertical: 14,
-		marginTop: 14,
-		gap: 8,
-	},
-	uploadButtonDisabled: {
-		opacity: 0.6,
-	},
-	uploadButtonText: {
-		fontSize: 15,
-		fontWeight: "700",
-		color: colors.cardBackground,
-	},
 	uploadSuccessBanner: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 8,
 		backgroundColor: "rgba(0, 217, 163, 0.12)",
-		borderRadius: 12,
-		paddingHorizontal: 14,
-		paddingVertical: 10,
-		marginTop: 14,
+		borderRadius: 10,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		marginTop: 12,
 	},
 	uploadSuccessText: {
-		fontSize: 13,
+		fontSize: 12,
 		fontWeight: "600",
 		color: colors.primaryDark,
 		flex: 1,
@@ -744,29 +736,29 @@ const styles = StyleSheet.create({
 		left: 0,
 		right: 0,
 		backgroundColor: colors.cardBackground,
-		paddingHorizontal: 20,
-		paddingTop: 16,
+		paddingHorizontal: 16,
+		paddingTop: 12,
 		borderTopWidth: 1,
 		borderTopColor: colors.borderLight,
 		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: -4 },
+		shadowOffset: { width: 0, height: -2 },
 		shadowOpacity: 1,
-		shadowRadius: 12,
-		elevation: 8,
+		shadowRadius: 6,
+		elevation: 6,
 	},
 	submitJobButton: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
 		backgroundColor: colors.printRequest,
-		borderRadius: 16,
-		paddingVertical: 16,
-		gap: 10,
+		borderRadius: 14,
+		paddingVertical: 14,
+		gap: 8,
 		shadowColor: colors.shadowPrimary,
-		shadowOffset: { width: 0, height: 4 },
+		shadowOffset: { width: 0, height: 2 },
 		shadowOpacity: 1,
-		shadowRadius: 12,
-		elevation: 4,
+		shadowRadius: 6,
+		elevation: 3,
 	},
 	submitJobButtonDisabled: {
 		backgroundColor: colors.borderLight,
@@ -774,7 +766,7 @@ const styles = StyleSheet.create({
 		elevation: 0,
 	},
 	submitJobButtonText: {
-		fontSize: 16,
+		fontSize: 15,
 		fontWeight: "700",
 		color: colors.cardBackground,
 	},
