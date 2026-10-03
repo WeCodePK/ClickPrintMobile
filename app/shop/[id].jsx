@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import StaleDataNotice from "../../components/StaleDataNotice";
 import config from "../../config/config";
@@ -42,7 +42,11 @@ const ShopDetails = () => {
 	const shop = shopQuery.data ?? null;
 	const services = servicesQuery.data ?? [];
 
-	const [expandedSizes, setExpandedSizes] = useState({});
+	const [expandedSizes, setExpandedSizes] = useState({
+		A4: true,
+		A3: true,
+		Legal: true,
+	});
 	const [expandedTimings, setExpandedTimings] = useState(false);
 
 	const toggleSize = (size) => {
@@ -64,6 +68,18 @@ const ShopDetails = () => {
 			serviceOthers.push(service);
 		}
 	});
+
+	// Sort inside the tree
+	for (const size in serviceTree) {
+		for (const color in serviceTree[size]) {
+			serviceTree[size][color].sort((a, b) => {
+				if (a.label === "Single Sided") return -1;
+				if (b.label === "Single Sided") return 1;
+				return a.label.localeCompare(b.label);
+			});
+		}
+	}
+
 	const loading = shopQuery.isPending;
 	const error = shopQuery.isError && !shop ? friendlyMessage(shopQuery.error) : null;
 	const refreshFailed = (shopQuery.isError || servicesQuery.isError) && !!shop;
@@ -93,6 +109,40 @@ const ShopDetails = () => {
 			return () => subscription.remove();
 		}, [goBack])
 	);
+
+	const summarizeTimings = (timings) => {
+		if (!timings || timings.length === 0) return [];
+		const summary = [];
+		let currentGroup = { start: 0, end: 0, timing: timings[0] };
+
+		for (let i = 1; i < timings.length; i++) {
+			if (timings[i] === currentGroup.timing) {
+				currentGroup.end = i;
+			} else {
+				summary.push(currentGroup);
+				currentGroup = { start: i, end: i, timing: timings[i] };
+			}
+		}
+		summary.push(currentGroup);
+
+		return summary.map(group => {
+			const startDay = DAYS_OF_WEEK[group.start] || `Day ${group.start + 1}`;
+			const endDay = DAYS_OF_WEEK[group.end] || `Day ${group.end + 1}`;
+			const label = group.start === group.end ? startDay : `${startDay} - ${endDay}`;
+			return { label, timing: group.timing };
+		});
+	};
+	const summarizedTimings = summarizeTimings(shop?.timings);
+
+	const handleOpenLocation = () => {
+		const url = shop?.googleMapsUrl || shop?.mapUrl;
+		if (url) {
+			Linking.openURL(url).catch(console.error);
+		} else if (shop?.location?.coordinates) {
+			const [lng, lat] = shop.location.coordinates;
+			Linking.openURL(`geo:${lat},${lng}?q=${lat},${lng}(${shop.name})`).catch(console.error);
+		}
+	};
 
 	//----------------------------------- RENDER -----------------------------------//
 
@@ -135,41 +185,21 @@ const ShopDetails = () => {
 							retrying={shopQuery.isFetching}
 						/>
 
-						{/* ───── Shop Profile Card ───── */}
-						<View style={styles.profileCard}>
-							<View style={styles.profileRow}>
-								{shop.imageFile ? (
-									<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.profileImage} contentFit="cover" transition={200} />
-								) : (
-									<View style={styles.profileIconWrap}>
-										<Feather name="shopping-bag" size={28} color={colors.printRequest} />
-									</View>
-								)}
-								<View style={styles.profileInfo}>
-									<Text style={styles.profileName} numberOfLines={1}>{shop.name}</Text>
-									<View style={styles.profileAddressRow}>
-										<Feather name="map-pin" size={12} color={colors.textSecondary} />
-										<Text style={styles.profileAddress} numberOfLines={2}>{shop.address}</Text>
-									</View>
+						{/* ───── Shop Cover Image ───── */}
+						<View style={styles.coverImageContainer}>
+							{shop.imageFile ? (
+								<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.coverImage} contentFit="cover" transition={200} />
+							) : (
+								<View style={[styles.coverImage, { backgroundColor: "rgba(255, 139, 123, 0.1)", justifyContent: "center", alignItems: "center" }]}>
+									<Feather name="shopping-bag" size={48} color={colors.printRequest} />
 								</View>
-							</View>
-							<View style={styles.profileChips}>
-								<View style={[styles.chip, shop.isOnline ? styles.chipOnline : styles.chipOffline]}>
-									<View style={[styles.chipDot, shop.isOnline ? styles.chipDotOnline : styles.chipDotOffline]} />
-									<Text style={[styles.chipText, shop.isOnline ? styles.chipTextOnline : styles.chipTextOffline]}>
-										{shop.isOnline ? "Online" : "Offline"}
-									</Text>
+							)}
+							<View style={styles.coverImageOverlay}>
+								<Text style={styles.coverShopName} numberOfLines={1}>{shop.name}</Text>
+								<View style={styles.coverShopAddressRow}>
+									<Text style={styles.coverShopAddress} numberOfLines={2}>{shop.address}</Text>
+									{shop.isOnline && <View style={styles.coverOnlineDot} />}
 								</View>
-								<View style={styles.chip}>
-									<Feather name="layers" size={12} color={colors.textSecondary} />
-									<Text style={styles.chipText}>{services.length} service{services.length !== 1 ? "s" : ""}</Text>
-								</View>
-								{Object.keys(serviceTree).length > 0 && (
-									<View style={styles.chip}>
-										<Feather name="file" size={12} color={colors.textSecondary} />
-										<Text style={styles.chipText}>{Object.keys(serviceTree).sort().join(", ")}</Text>
-									</View>
-								)}
 							</View>
 						</View>
 
@@ -197,27 +227,25 @@ const ShopDetails = () => {
 											<Feather name={expandedTimings ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
 										</View>
 									</TouchableOpacity>
-									{expandedTimings && (
-										<View style={styles.cardBody}>
-											{shop.timings.map((timing, index) => {
-												const isClosed = timing.toLowerCase() === "closed";
-												const isToday = index === todayIndex;
-												return (
-													<View key={index} style={[styles.timingRow, isToday && styles.timingRowToday, index < shop.timings.length - 1 && styles.timingRowBorder]}>
-														<View style={styles.timingDayWrap}>
-															{isToday && <View style={styles.todayDot} />}
-															<Text style={[styles.timingDay, isToday && styles.timingDayToday]}>
-																{DAYS_OF_WEEK[index] ?? `Day ${index + 1}`}
-															</Text>
-														</View>
-														<Text style={[isClosed ? styles.timingValueClosed : styles.timingValue, isToday && styles.timingValueToday]}>
-															{isClosed ? "Closed" : timing}
+									<View style={styles.cardBody}>
+										{(expandedTimings ? shop.timings.map((t, i) => ({ label: DAYS_OF_WEEK[i], timing: t, isToday: i === todayIndex })) : summarizedTimings.map(t => ({...t, isToday: false}))).map((row, index, arr) => {
+											const isClosed = row.timing.toLowerCase() === "closed";
+											const isToday = row.isToday;
+											return (
+												<View key={index} style={[styles.timingRow, isToday && styles.timingRowToday, index < arr.length - 1 && styles.timingRowBorder]}>
+													<View style={styles.timingDayWrap}>
+														{isToday && <View style={styles.todayDot} />}
+														<Text style={[styles.timingDay, isToday && styles.timingDayToday]}>
+															{row.label}
 														</Text>
 													</View>
-												);
-											})}
-										</View>
-									)}
+													<Text style={[isClosed ? styles.timingValueClosed : styles.timingValue, isToday && styles.timingValueToday]}>
+														{isClosed ? "Closed" : row.timing}
+													</Text>
+												</View>
+											);
+										})}
+									</View>
 								</View>
 							</View>
 						)}
@@ -238,7 +266,15 @@ const ShopDetails = () => {
 										<Text style={styles.emptyText}>No services available</Text>
 									) : (
 										<>
-											{Object.keys(serviceTree).sort().map((size, sIdx, sArr) => (
+											{Object.keys(serviceTree)
+												.sort((a, b) => {
+													const order = { "A4": 1, "A3": 2 };
+													const rankA = order[a] || 99;
+													const rankB = order[b] || 99;
+													if (rankA !== rankB) return rankA - rankB;
+													return a.localeCompare(b);
+												})
+												.map((size, sIdx, sArr) => (
 												<View key={size} style={[styles.sizeBlock, sIdx < sArr.length - 1 && styles.sizeBlockBorder]}>
 													<TouchableOpacity
 														style={styles.sizeRow}
@@ -254,7 +290,13 @@ const ShopDetails = () => {
 														<Feather name={expandedSizes[size] ? "chevron-up" : "chevron-down"} size={16} color={colors.textSecondary} />
 													</TouchableOpacity>
 
-													{expandedSizes[size] && Object.keys(serviceTree[size]).map((color) => (
+													{expandedSizes[size] && Object.keys(serviceTree[size])
+														.sort((a, b) => {
+															if (a === "Black & White") return -1;
+															if (b === "Black & White") return 1;
+															return a.localeCompare(b);
+														})
+														.map((color) => (
 														<View key={color} style={styles.colorBlock}>
 															<View style={styles.colorRow}>
 																<View style={[styles.colorDot, color === "Color" ? styles.colorDotColor : styles.colorDotBW]} />
@@ -287,6 +329,64 @@ const ShopDetails = () => {
 										</>
 									)}
 								</View>
+							</View>
+						</View>
+
+						{/* ───── More Details ───── */}
+						<View style={styles.section}>
+							<View style={styles.sectionHeader}>
+								<Feather name="info" size={18} color={colors.textSecondary} />
+								<Text style={styles.sectionTitle}>More Details</Text>
+							</View>
+							<View style={styles.card}>
+								{/* Contact */}
+								<View style={styles.moreDetailsRow}>
+									<View style={styles.moreDetailsIconWrap}>
+										<Feather name="phone" size={18} color={colors.textSecondary} />
+									</View>
+									<View style={styles.moreDetailsContent}>
+										<Text style={styles.moreDetailsLabel}>Contact Number</Text>
+										<Text style={styles.moreDetailsValue}>{shop.contactNumber || shop.phone || shop.phoneNumber || "Not available"}</Text>
+									</View>
+								</View>
+
+								{/* Location */}
+								<View style={[styles.moreDetailsRow, { borderTopWidth: 1, borderTopColor: colors.borderLight }]}>
+									<View style={styles.moreDetailsIconWrap}>
+										<Feather name="map-pin" size={18} color={colors.textSecondary} />
+									</View>
+									<View style={[styles.moreDetailsContent, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+										<View>
+											<Text style={styles.moreDetailsLabel}>Location</Text>
+											{shop.location?.coordinates ? (
+												<Text style={styles.moreDetailsValueMono}>
+													{shop.location.coordinates[1]?.toFixed(4)}, {shop.location.coordinates[0]?.toFixed(4)}
+												</Text>
+											) : (
+												<Text style={styles.moreDetailsValue}>Not available</Text>
+											)}
+										</View>
+										<TouchableOpacity style={styles.openMapButton} onPress={handleOpenLocation} activeOpacity={0.7}>
+											<Text style={styles.openMapText}>Open Map</Text>
+											<Feather name="external-link" size={14} color={colors.primary} />
+										</TouchableOpacity>
+									</View>
+								</View>
+
+								{/* Wallet */}
+								{shop.wallet && (
+									<View style={[styles.moreDetailsRow, { borderTopWidth: 1, borderTopColor: colors.borderLight, alignItems: "flex-start" }]}>
+										<View style={styles.moreDetailsIconWrap}>
+											<Feather name="credit-card" size={18} color={colors.textSecondary} />
+										</View>
+										<View style={styles.moreDetailsContent}>
+											<Text style={styles.moreDetailsLabel}>Wallet Details</Text>
+											<Text style={styles.moreDetailsValue}>{shop.wallet.bank || "Bank Not Specified"}</Text>
+											<Text style={styles.moreDetailsSubValue}>{shop.wallet.title || "Title Not Specified"}</Text>
+											<Text style={[styles.moreDetailsValueMono, { marginTop: 4 }]}>{shop.wallet.number || "Number Not Specified"}</Text>
+										</View>
+									</View>
+								)}
 							</View>
 						</View>
 
@@ -373,110 +473,73 @@ const styles = StyleSheet.create({
 		paddingBottom: 40,
 	},
 
-	/* ── Profile Card ── */
-	profileCard: {
-		backgroundColor: colors.cardBackground,
-		borderRadius: 20,
-		padding: 20,
-		marginBottom: 16,
-		borderWidth: 1,
-		borderColor: colors.borderLight,
-		shadowColor: colors.shadowLight,
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 1,
-		shadowRadius: 8,
-		elevation: 2,
+	/* ── Shop Cover Image ── */
+	coverImageContainer: {
+		height: 220,
+		marginHorizontal: -20,
+		marginTop: -20,
+		marginBottom: 20,
+		position: "relative",
 	},
-	profileRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 16,
+	coverImage: {
+		width: "100%",
+		height: "100%",
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
 	},
-	profileImage: {
-		width: 64,
-		height: 64,
-		borderRadius: 16,
-		backgroundColor: colors.background,
+	coverImageOverlay: {
+		position: "absolute",
+		bottom: 0,
+		left: 0,
+		right: 0,
+		padding: 16,
+		paddingTop: 32,
+		backgroundColor: "rgba(0,0,0,0.5)", // Simple overlay for readability
+		alignItems: "flex-end",
 	},
-	profileIconWrap: {
-		width: 64,
-		height: 64,
-		borderRadius: 16,
-		backgroundColor: "rgba(255, 139, 123, 0.1)",
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	profileInfo: {
-		flex: 1,
-		gap: 6,
-	},
-	profileName: {
-		fontSize: 20,
+	coverShopName: {
+		fontSize: 22,
 		fontWeight: "700",
-		color: colors.textPrimary,
+		color: "#FFFFFF",
+		textAlign: "right",
 	},
-	profileAddressRow: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		gap: 4,
-		paddingTop: 2,
-	},
-	profileAddress: {
-		fontSize: 13,
-		color: colors.textSecondary,
-		flex: 1,
-		lineHeight: 18,
-	},
-	profileChips: {
-		flexDirection: "row",
-		flexWrap: "wrap",
-		gap: 8,
-		marginTop: 16,
-		paddingTop: 16,
-		borderTopWidth: 1,
-		borderTopColor: colors.borderLight,
-	},
-	chip: {
+	coverShopAddressRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 6,
-		paddingHorizontal: 10,
-		paddingVertical: 5,
-		borderRadius: 20,
-		backgroundColor: colors.background,
+		justifyContent: "flex-end",
+		marginTop: 4,
+		gap: 8,
 	},
-	chipOnline: {
-		backgroundColor: "rgba(0, 217, 163, 0.08)",
+	coverShopAddress: {
+		fontSize: 14,
+		color: "#E2E8F0",
+		textAlign: "right",
+		maxWidth: "90%",
 	},
-	chipOffline: {
-		backgroundColor: colors.background,
-	},
-	chipDot: {
-		width: 6,
-		height: 6,
-		borderRadius: 3,
-	},
-	chipDotOnline: {
+	coverOnlineDot: {
+		width: 10,
+		height: 10,
+		borderRadius: 5,
 		backgroundColor: colors.primary,
-	},
-	chipDotOffline: {
-		backgroundColor: colors.textSecondary,
-	},
-	chipText: {
-		fontSize: 12,
-		fontWeight: "600",
-		color: colors.textSecondary,
-	},
-	chipTextOnline: {
-		color: colors.primary,
-	},
-	chipTextOffline: {
-		color: colors.textSecondary,
 	},
 
 	/* ── Shared Card ── */
 	section: {
-		marginBottom: 16,
+		marginBottom: 20,
+	},
+	sectionHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		marginBottom: 12,
+	},
+	sectionTitle: {
+		fontSize: 15,
+		fontWeight: "700",
+		color: colors.textPrimary,
 	},
 	card: {
 		backgroundColor: colors.cardBackground,
@@ -682,7 +745,64 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 		color: colors.primary,
 	},
+
+	/* ── More Details ── */
+	moreDetailsRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		paddingVertical: 14,
+		paddingHorizontal: 16,
+		gap: 12,
+	},
+	moreDetailsIconWrap: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		backgroundColor: colors.background,
+		justifyContent: "center",
+		alignItems: "center",
+	},
+	moreDetailsContent: {
+		flex: 1,
+	},
+	moreDetailsLabel: {
+		fontSize: 12,
+		fontWeight: "600",
+		color: colors.textSecondary,
+		textTransform: "uppercase",
+		letterSpacing: 0.5,
+		marginBottom: 4,
+	},
+	moreDetailsValue: {
+		fontSize: 15,
+		fontWeight: "600",
+		color: colors.textPrimary,
+	},
+	moreDetailsSubValue: {
+		fontSize: 13,
+		color: colors.textSecondary,
+		marginTop: 2,
+	},
+	moreDetailsValueMono: {
+		fontSize: 13,
+		fontFamily: "monospace",
+		color: colors.textSecondary,
+		marginTop: 2,
+	},
+	openMapButton: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		backgroundColor: "rgba(0, 217, 163, 0.1)",
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		borderRadius: 8,
+	},
+	openMapText: {
+		fontSize: 13,
+		fontWeight: "600",
+		color: colors.primary,
+	},
 });
 
 export default ShopDetails;
-

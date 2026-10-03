@@ -84,7 +84,7 @@ const DraftDetails = () => {
 
 	const [additionalComments, setAdditionalComments] = useState(draft?.additionalComments || "");
 	const [submitting, setSubmitting] = useState(false);
-	const [expandedFilesSection, setExpandedFilesSection] = useState(false);
+	const [showMoreDetails, setShowMoreDetails] = useState(false);
 	const retry = useRetryStatus();
 
 	// Comments typed before the draft finished loading aren't overwritten.
@@ -356,39 +356,53 @@ const DraftDetails = () => {
 					</View>
 				</View>
 
-				{/* Files Section — matching job-details.jsx style */}
+				{/* More Details — collapsed by default */}
 				<View style={styles.section}>
-					<View style={styles.sectionHeader}>
-						<Feather name="file-text" size={18} color={colors.printRequest} />
-						<Text style={styles.sectionTitle}>Files ({files.length})</Text>
-					</View>
-					{files.map((fileEntry, index) => {
-						const pages = fileEntry.file?.numberOfPages;
-						return (
-							<View key={fileEntry.file?._id ?? index} style={[styles.fileCard, index < files.length - 1 && styles.fileCardSpacing]}>
-								<View style={styles.fileCardHeader}>
-									<View style={styles.fileIndex}>
-										<Text style={styles.fileIndexText}>{index + 1}</Text>
-									</View>
-									<Text style={styles.fileLabel} numberOfLines={1}>
-										{fileEntry.file?.name || `File ${index + 1}`}
-									</Text>
-									{pages != null && (
-										<Text style={styles.fileMeta}> · {pages} page{pages !== 1 ? "s" : ""}</Text>
-									)}
-								</View>
+					<TouchableOpacity
+						style={styles.moreDetailsToggle}
+						onPress={() => setShowMoreDetails((prev) => !prev)}
+						activeOpacity={0.7}
+					>
+						<Text style={styles.moreDetailsTitle}>More details</Text>
+						<Feather name={showMoreDetails ? "chevron-up" : "chevron-down"} size={20} color={colors.textPrimary} />
+					</TouchableOpacity>
 
-								<View style={styles.settingsGrid}>
-									{SETTINGS_LAYOUT.map(({ label, format }) => (
-										<View key={label} style={styles.settingCell}>
-											<Text style={styles.settingLabel}>{label}</Text>
-											<Text style={styles.settingValue}>{format(fileEntry.settings || {})}</Text>
-										</View>
-									))}
-								</View>
+					{showMoreDetails && (
+						<View style={styles.moreDetailsPane}>
+							{/* Files Section — matching job-details.jsx style */}
+							<View style={styles.sectionHeader}>
+								<Feather name="file-text" size={18} color={colors.printRequest} />
+								<Text style={styles.sectionTitle}>Files ({files.length})</Text>
 							</View>
-						);
-					})}
+							{files.map((fileEntry, index) => {
+								const pages = fileEntry.file?.numberOfPages;
+								return (
+									<View key={fileEntry.file?._id ?? index} style={[styles.fileCard, index < files.length - 1 && styles.fileCardSpacing]}>
+										<View style={styles.fileCardHeader}>
+											<View style={styles.fileIndex}>
+												<Text style={styles.fileIndexText}>{index + 1}</Text>
+											</View>
+											<Text style={styles.fileLabel} numberOfLines={1}>
+												{fileEntry.file?.name || `File ${index + 1}`}
+											</Text>
+											{pages != null && (
+												<Text style={styles.fileMeta}> · {pages} page{pages !== 1 ? "s" : ""}</Text>
+											)}
+										</View>
+
+										<View style={styles.settingsGrid}>
+											{SETTINGS_LAYOUT.map(({ label, format }) => (
+												<View key={label} style={styles.settingCell}>
+													<Text style={styles.settingLabel}>{label}</Text>
+													<Text style={styles.settingValue}>{format(fileEntry.settings || {})}</Text>
+												</View>
+											))}
+										</View>
+									</View>
+								);
+							})}
+						</View>
+					)}
 				</View>
 			</ScrollView>
 
@@ -776,6 +790,24 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 		fontWeight: "700",
 		color: colors.cardBackground,
+	},
+	moreDetailsToggle: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: 12,
+		paddingTop: 12,
+		paddingBottom: 4,
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
+	},
+	moreDetailsTitle: {
+		fontSize: 15,
+		fontWeight: "600",
+		color: colors.textPrimary,
+	},
+	moreDetailsPane: {
+		paddingTop: 16,
 	},
 });
 
