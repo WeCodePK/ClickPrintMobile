@@ -20,9 +20,9 @@ import {
 	View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import config from "../config/config";
 import { colors } from "../constants/colors";
 import { fetchShop, queryKeys } from "../hooks/queries";
+import { useFileSource } from "../hooks/useFileSource";
 import { queryClient } from "../lib/queryClient";
 import { createDraft } from "../services/drafts";
 import { showAlert } from "../utils/alert";
@@ -34,7 +34,6 @@ import SecureStore from "../utils/storage";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
-const API_BASE_URL = config.apiBaseUrl;
 const SCAN_BOX_SIZE = 260;
 
 //----------------------------------- COMPONENTS -----------------------------------//
@@ -51,6 +50,7 @@ const QRScanner = () => {
 	const [showManualEntry, setShowManualEntry] = useState(false);
 	const [manualCode, setManualCode] = useState("");
 	const [scannedShop, setScannedShop] = useState(null);
+	const scannedShopImage = useFileSource(scannedShop?.imageFile);
 	const [scanError, setScanError] = useState(null); // { title, message }
 	const scanLineAnim = useRef(new Animated.Value(0)).current;
 	const hasProcessedRef = useRef(false);
@@ -451,9 +451,9 @@ const QRScanner = () => {
 							<ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
 								{/* Shop Image & Name */}
 								<View style={styles.shopHeaderRow}>
-									{scannedShop.imageFile ? (
+									{scannedShopImage ? (
 										<Image
-											source={{ uri: `${API_BASE_URL}/files/${scannedShop.imageFile}` }}
+											source={scannedShopImage}
 											style={styles.shopImage}
 											contentFit="cover"
 											transition={200}

@@ -11,12 +11,9 @@ import { friendlyMessage } from "../../utils/errors";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ShopsMap from "../../components/ShopsMap";
 import { colors } from "../../constants/colors";
+import { useFileSource } from "../../hooks/useFileSource";
 import { useShops } from "../../hooks/useShops";
 import { getInitialRegion, toLatLng } from "../../utils/shopLocation";
-import config from "../../config/config"
-
-
-const API_BASE_URL = config.apiBaseUrl;
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -226,10 +223,11 @@ const ViewToggle = ({ mode, onChange }) => {
 
 // List row for a shop; mirrors the map callout content but laid out horizontally.
 const ShopListItem = ({ shop, onPress, onViewLocation, onNewPrint, creatingDraft }) => {
+	const imageSource = useFileSource(shop.imageFile);
 	return (
 		<TouchableOpacity style={styles.shopCard} onPress={onPress} activeOpacity={0.7}>
-			{shop.imageFile ? (
-				<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.shopImage} contentFit="cover" transition={200} />
+			{imageSource ? (
+				<Image source={imageSource} style={styles.shopImage} contentFit="cover" transition={200} />
 			) : (
 				<View style={styles.shopIconContainer}>
 					<Feather name="shopping-bag" size={24} color={colors.printRequest} />
@@ -290,6 +288,7 @@ const ShopListItem = ({ shop, onPress, onViewLocation, onNewPrint, creatingDraft
 // interaction is identical on web (Leaflet) and native (react-native-maps), avoiding
 // the platform quirks of tappable buttons inside native map callouts.
 const ShopCallout = ({ shop, onClose, onNewPrint, onDirections, onMoreDetails, creatingDraft }) => {
+	const imageSource = useFileSource(shop.imageFile);
 	return (
 		<View style={styles.callout}>
 			<TouchableOpacity style={styles.calloutClose} onPress={onClose} hitSlop={8}>
@@ -297,8 +296,8 @@ const ShopCallout = ({ shop, onClose, onNewPrint, onDirections, onMoreDetails, c
 			</TouchableOpacity>
 
 			<TouchableOpacity style={styles.calloutTop} onPress={onMoreDetails} activeOpacity={0.7}>
-				{shop.imageFile ? (
-					<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.calloutImage} contentFit="cover" transition={200} />
+				{imageSource ? (
+					<Image source={imageSource} style={styles.calloutImage} contentFit="cover" transition={200} />
 				) : (
 					<View style={styles.calloutIcon}>
 						<Feather name="shopping-bag" size={22} color={colors.printRequest} />

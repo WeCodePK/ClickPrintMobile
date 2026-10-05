@@ -7,14 +7,12 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import StaleDataNotice from "../../components/StaleDataNotice";
-import config from "../../config/config";
 import { colors } from "../../constants/colors";
 import { useServicesQuery, useShopQuery } from "../../hooks/queries";
+import { useFileSource } from "../../hooks/useFileSource";
 import { friendlyMessage } from "../../utils/errors";
 
 //----------------------------------- CONSTANTS -----------------------------------//
-
-const API_BASE_URL = config.apiBaseUrl;
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -134,13 +132,17 @@ const ShopDetails = () => {
 	};
 	const summarizedTimings = summarizeTimings(shop?.timings);
 
+	const imageSource = useFileSource(shop?.imageFile);
+
+	// Backend sends `coordinates` as [latitude, longitude] and an optional `googleMapsLink`.
+	const coords = Array.isArray(shop?.coordinates) && shop.coordinates.length === 2 ? shop.coordinates : null;
+	const [lat, lng] = coords || [];
+
 	const handleOpenLocation = () => {
-		const url = shop?.googleMapsUrl || shop?.mapUrl;
-		if (url) {
-			Linking.openURL(url).catch(console.error);
-		} else if (shop?.location?.coordinates) {
-			const [lng, lat] = shop.location.coordinates;
-			Linking.openURL(`geo:${lat},${lng}?q=${lat},${lng}(${shop.name})`).catch(console.error);
+		if (shop?.googleMapsLink) {
+			Linking.openURL(shop.googleMapsLink).catch(console.error);
+		} else if (coords) {
+			Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`).catch(console.error);
 		}
 	};
 
@@ -187,8 +189,8 @@ const ShopDetails = () => {
 
 						{/* ───── Shop Cover Image ───── */}
 						<View style={styles.coverImageContainer}>
-							{shop.imageFile ? (
-								<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.coverImage} contentFit="cover" transition={200} />
+							{imageSource ? (
+								<Image source={imageSource} style={styles.coverImage} contentFit="cover" transition={200} />
 							) : (
 								<View style={[styles.coverImage, { backgroundColor: "rgba(255, 139, 123, 0.1)", justifyContent: "center", alignItems: "center" }]}>
 									<Feather name="shopping-bag" size={48} color={colors.printRequest} />
@@ -358,15 +360,20 @@ const ShopDetails = () => {
 									<View style={[styles.moreDetailsContent, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
 										<View>
 											<Text style={styles.moreDetailsLabel}>Location</Text>
-											{shop.location?.coordinates ? (
+											{coords ? (
 												<Text style={styles.moreDetailsValueMono}>
-													{shop.location.coordinates[1]?.toFixed(4)}, {shop.location.coordinates[0]?.toFixed(4)}
+													{lat.toFixed(4)}, {lng.toFixed(4)}
 												</Text>
 											) : (
 												<Text style={styles.moreDetailsValue}>Not available</Text>
 											)}
 										</View>
-										<TouchableOpacity style={styles.openMapButton} onPress={handleOpenLocation} activeOpacity={0.7}>
+										<TouchableOpacity
+											style={[styles.openMapButton, !shop.googleMapsLink && !coords && { opacity: 0.5 }]}
+											onPress={handleOpenLocation}
+											disabled={!shop.googleMapsLink && !coords}
+											activeOpacity={0.7}
+										>
 											<Text style={styles.openMapText}>Open Map</Text>
 											<Feather name="external-link" size={14} color={colors.primary} />
 										</TouchableOpacity>
