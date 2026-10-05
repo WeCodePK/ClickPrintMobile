@@ -2,10 +2,10 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { Image } from "expo-image";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import ShopHeroImage from "../../components/ShopHeroImage";
 import StaleDataNotice from "../../components/StaleDataNotice";
 import { colors } from "../../constants/colors";
 import { useServicesQuery, useShopQuery } from "../../hooks/queries";
@@ -155,13 +155,16 @@ const ShopDetails = () => {
 	return (
 		<SafeAreaView style={styles.container} edges={["top"]}>
 			<StatusBar barStyle="dark-content" backgroundColor={colors.background} />
-			<View style={styles.header}>
-				<TouchableOpacity onPress={goBack} style={styles.backButton}>
-					<Feather name="arrow-left" size={24} color={colors.textPrimary} />
-				</TouchableOpacity>
-				<Text style={styles.headerTitle}>Shop Details</Text>
-				<View style={styles.placeholder} />
-			</View>
+			{/* Once the shop is shown, the back button lives on the hero image instead. */}
+			{!shop && (
+				<View style={styles.header}>
+					<TouchableOpacity onPress={goBack} style={styles.backButton}>
+						<Feather name="arrow-left" size={24} color={colors.textPrimary} />
+					</TouchableOpacity>
+					<Text style={styles.headerTitle}>Shop Details</Text>
+					<View style={styles.placeholder} />
+				</View>
+			)}
 
 			{loading ? (
 				<View style={styles.loadingContainer}>
@@ -179,6 +182,16 @@ const ShopDetails = () => {
 			) : (
 				<>
 					<ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+						{/* ───── Shop Hero ───── */}
+						<ShopHeroImage
+							imageSource={imageSource}
+							name={shop.name}
+							address={shop.address}
+							timings={shop.timings}
+							onBackPress={goBack}
+							style={styles.hero}
+						/>
+
 						<StaleDataNotice
 							error={refreshFailed ? friendlyMessage(shopQuery.error || servicesQuery.error) : null}
 							updatedAt={shopQuery.dataUpdatedAt}
@@ -186,24 +199,6 @@ const ShopDetails = () => {
 							onRetry={fetchShopDetails}
 							retrying={shopQuery.isFetching}
 						/>
-
-						{/* ───── Shop Cover Image ───── */}
-						<View style={styles.coverImageContainer}>
-							{imageSource ? (
-								<Image source={imageSource} style={styles.coverImage} contentFit="cover" transition={200} />
-							) : (
-								<View style={[styles.coverImage, { backgroundColor: "rgba(255, 139, 123, 0.1)", justifyContent: "center", alignItems: "center" }]}>
-									<Feather name="shopping-bag" size={48} color={colors.printRequest} />
-								</View>
-							)}
-							<View style={styles.coverImageOverlay}>
-								<Text style={styles.coverShopName} numberOfLines={1}>{shop.name}</Text>
-								<View style={styles.coverShopAddressRow}>
-									<Text style={styles.coverShopAddress} numberOfLines={2}>{shop.address}</Text>
-									{shop.isOnline && <View style={styles.coverOnlineDot} />}
-								</View>
-							</View>
-						</View>
 
 						{/* ───── Timings Card ───── */}
 						{shop.timings && shop.timings.length > 0 && (
@@ -480,57 +475,13 @@ const styles = StyleSheet.create({
 		paddingBottom: 40,
 	},
 
-	/* ── Shop Cover Image ── */
-	coverImageContainer: {
-		height: 220,
-		marginHorizontal: -20,
-		marginTop: -20,
+	/* ── Shop Hero ── */
+	// The hero sets its own 16/12 margins; offset the scroll padding (20) so
+	// they land at 16 from the screen edge and 12 below the top.
+	hero: {
+		marginHorizontal: -4,
+		marginTop: -8,
 		marginBottom: 20,
-		position: "relative",
-	},
-	coverImage: {
-		width: "100%",
-		height: "100%",
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		bottom: 0,
-	},
-	coverImageOverlay: {
-		position: "absolute",
-		bottom: 0,
-		left: 0,
-		right: 0,
-		padding: 16,
-		paddingTop: 32,
-		backgroundColor: "rgba(0,0,0,0.5)", // Simple overlay for readability
-		alignItems: "flex-end",
-	},
-	coverShopName: {
-		fontSize: 22,
-		fontWeight: "700",
-		color: "#FFFFFF",
-		textAlign: "right",
-	},
-	coverShopAddressRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "flex-end",
-		marginTop: 4,
-		gap: 8,
-	},
-	coverShopAddress: {
-		fontSize: 14,
-		color: "#E2E8F0",
-		textAlign: "right",
-		maxWidth: "90%",
-	},
-	coverOnlineDot: {
-		width: 10,
-		height: 10,
-		borderRadius: 5,
-		backgroundColor: colors.primary,
 	},
 
 	/* ── Shared Card ── */
