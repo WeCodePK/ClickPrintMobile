@@ -157,6 +157,17 @@ const HomePage = () => {
 	}, []);
 
 	const handleDraftPress = (draft) => {
+		// A draft with no files yet (e.g. started from a shop, then left before
+		// uploading) resumes on the upload page, keeping its shop.
+		if (!draft.files || draft.files.length === 0) {
+			const shopId = draft.shop?._id || (typeof draft.shop === "string" ? draft.shop : null);
+			router.push({
+				pathname: "/upload-document",
+				params: { draftId: draft._id, ...(shopId && { shopId }) },
+			});
+			return;
+		}
+
 		const documents = draft.files.map(f => ({
 			fileId: f.file?._id || f.file,
 			name: f.file?.name || `File`

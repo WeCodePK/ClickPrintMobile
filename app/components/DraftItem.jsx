@@ -14,10 +14,11 @@ const DraftItem = ({ draft, onPress, onDelete, isLast = false }) => {
 
 	// Which step the draft is waiting on — mirrors home's handleDraftPress routing.
 	const configuredFiles = files.filter((f) => f.settings && Object.keys(f.settings).length > 0);
-	const hasMissingSettings = fileCount === 0 || configuredFiles.length < fileCount;
-	const stage = hasMissingSettings ? "Add settings" : !draft.shop ? "Select shop" : "Ready";
+	const hasMissingSettings = configuredFiles.length < fileCount;
+	const stage = fileCount === 0 ? "Upload file" : hasMissingSettings ? "Add settings" : !draft.shop ? "Select shop" : "Ready";
 
 	const STAGE_CONFIG = {
+		"Upload file": { label: "Upload File", color: colors.printRequestDark, bg: "rgba(255, 139, 123, 0.16)" },
 		"Add settings": { label: "Add Settings", color: colors.printRequestDark, bg: "rgba(255, 139, 123, 0.16)" },
 		"Select shop": { label: "Select Shop", color: "#C28A00", bg: "rgba(245, 197, 24, 0.16)" },
 		"Ready": { label: "Ready", color: colors.primaryDark, bg: "rgba(0, 217, 163, 0.12)" },
