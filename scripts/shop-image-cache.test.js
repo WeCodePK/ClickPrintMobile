@@ -89,6 +89,39 @@ test("shop images are reused locally across screens and reloads", async (t) => {
 		assert.equal(cache.entries.has(failureUrl), true);
 	});
 
+	await t.test("protected images send auth once and stay local after token renewal", async () => {
+		const protectedUrl = "https://api.example.com/api/files/protected-image";
+		globalThis.fetch = async (requestUrl, options) => {
+			assert.equal(requestUrl, protectedUrl);
+			assert.equal(options.headers.Authorization, "Bearer original-token");
+			return imageResponse();
+		};
+		await loadShopImageBlob(protectedUrl, { headers: { Authorization: "Bearer original-token" } });
+		assert.equal(cache.entries.get(protectedUrl).headers.has("Authorization"), false);
+		const restarted = await newLoader();
+		globalThis.fetch = async () => { throw new Error("Saved images must stay local"); };
+		assert.equal(await (await restarted.loadShopImageBlob(protectedUrl, {
+			headers: { Authorization: "Bearer renewed-token" },
+		})).text(), "image bytes");
+	});
+
+	await t.test("an arriving auth header does not reuse an unauthorized request", async () => {
+		const authUrl = "https://api.example.com/api/files/auth-arrives";
+		let finishUnauthorized;
+		globalThis.fetch = async (requestUrl, options) => {
+			if (options?.headers?.Authorization) return imageResponse();
+			return new Promise((resolve) => { finishUnauthorized = resolve; });
+		};
+		const unauthorized = loadShopImageBlob(authUrl);
+		const rejected = assert.rejects(unauthorized, /401/);
+		await new Promise((resolve) => setImmediate(resolve));
+		const authorized = loadShopImageBlob(authUrl, { headers: { Authorization: "Bearer token" } });
+		assert.notEqual(unauthorized, authorized);
+		assert.equal(await (await authorized).text(), "image bytes");
+		finishUnauthorized(new Response("Unauthorized", { status: 401 }));
+		await rejected;
+	});
+
 	await t.test("disabled storage and failed writes still display downloaded images", async () => {
 		globalThis.fetch = async () => imageResponse();
 		delete globalThis.caches;

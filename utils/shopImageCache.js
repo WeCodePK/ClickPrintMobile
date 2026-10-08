@@ -3,7 +3,7 @@
 export const SHOP_IMAGES_CACHE = "clickprint-shop-images";
 const pendingLoads = new Map();
 
-const readShopImage = async (url) => {
+const readShopImage = async (url, options) => {
 	let cache = null;
 	try {
 		if (typeof caches !== "undefined") {
@@ -19,7 +19,7 @@ const readShopImage = async (url) => {
 		cache = null;
 	}
 
-	const response = await fetch(url);
+	const response = await fetch(url, options);
 	if (!response.ok) throw new Error(`Failed to load shop image: ${response.status}`);
 	const blob = await response.blob();
 	if (blob.size === 0) throw new Error("Shop image is empty");
@@ -36,12 +36,13 @@ const readShopImage = async (url) => {
 	return blob;
 };
 
-export const loadShopImageBlob = (url) => {
-	// List rows, map callouts and details can ask for the same file together.
-	// Share the download, and allow failed downloads to retry on the next visit.
-	if (!pendingLoads.has(url)) {
-		const load = readShopImage(url).finally(() => pendingLoads.delete(url));
-		pendingLoads.set(url, load);
+export const loadShopImageBlob = (url, options) => {
+	// Share downloads with the same headers. An auth token arriving must not
+	// reuse an earlier unauthenticated attempt. Tokens are never stored on disk.
+	const requestKey = JSON.stringify([url, options?.headers || {}]);
+	if (!pendingLoads.has(requestKey)) {
+		const load = readShopImage(url, options).finally(() => pendingLoads.delete(requestKey));
+		pendingLoads.set(requestKey, load);
 	}
-	return pendingLoads.get(url);
+	return pendingLoads.get(requestKey);
 };

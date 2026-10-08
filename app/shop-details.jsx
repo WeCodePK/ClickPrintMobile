@@ -1,23 +1,20 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { showAlert } from "../utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import config from "../config/config";
 import { colors } from "../constants/colors";
 import StaleDataNotice from "../components/StaleDataNotice";
 import { useDraftQuery, useShopsQuery } from "../hooks/queries";
+import { useFileSource } from "../hooks/useFileSource";
 import { useRetryStatus } from "../hooks/useRetryStatus";
 import { checkDraft, updateDraft } from "../services/drafts";
 import { documentsFromDraft, segmentsArrayFromDraft, flattenSegments } from "../utils/draft";
 import { friendlyMessage } from "../utils/errors";
-
-//----------------------------------- CONSTANTS -----------------------------------//
-
-const API_BASE_URL = config.apiBaseUrl;
 
 //----------------------------------- HELPERS -----------------------------------//
 
@@ -255,12 +252,13 @@ const ShopDetails = () => {
 
 const ShopCard = ({ shop, isSelected, onSelect }) => {
 	const router = useRouter();
+	const imageSource = useFileSource(shop.imageFile);
 
 	return (
 		<TouchableOpacity style={[styles.shopCard, isSelected && styles.shopCardSelected]} onPress={onSelect} activeOpacity={0.7}>
 			<View style={[styles.shopIcon, isSelected && styles.shopIconSelected]}>
-				{shop.imageFile ? (
-					<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.shopImage} />
+				{imageSource ? (
+					<Image source={imageSource} style={styles.shopImage} contentFit="cover" transition={200} />
 				) : (
 					<Feather name="shopping-bag" size={24} color={isSelected ? colors.printRequest : colors.textSecondary} />
 				)}
