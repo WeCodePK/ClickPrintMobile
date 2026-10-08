@@ -352,33 +352,33 @@ const ShopDetails = () => {
 							<View style={styles.card}>
 								{/* Contact */}
 								<View style={styles.moreDetailsRow}>
-									<View style={styles.contactField}>
-										<View style={styles.moreDetailsIconWrap}>
-											<Feather name="phone" size={18} color={colors.textSecondary} />
-										</View>
-										<View style={styles.moreDetailsContent}>
-											<Text style={styles.moreDetailsLabel}>Contact Number</Text>
-											<Text style={styles.moreDetailsValue}>{contactNumber || "Not available"}</Text>
-										</View>
+									<View style={styles.moreDetailsIconWrap}>
+										<Feather name="phone" size={18} color={colors.textSecondary} />
 									</View>
-									<TouchableOpacity
-										style={[styles.contactField, !whatsappUrl && styles.contactUnavailable]}
-										onPress={handleWhatsAppContact}
-										disabled={!whatsappUrl}
-										activeOpacity={0.7}
-										accessibilityRole="link"
-										accessibilityLabel="Contact shop on WhatsApp"
-										accessibilityState={{ disabled: !whatsappUrl }}
-									>
-										<View style={[styles.moreDetailsIconWrap, styles.whatsappIconWrap]}>
-											<MaterialCommunityIcons name="whatsapp" size={22} color="#25D366" />
-										</View>
-										<View style={styles.moreDetailsContent}>
-											<Text style={styles.moreDetailsLabel}>Contact on WhatsApp</Text>
-											<Text style={[styles.moreDetailsValue, styles.whatsappText]}>{whatsappUrl ? "Start chat" : "Not available"}</Text>
-										</View>
-									</TouchableOpacity>
+									<View style={styles.moreDetailsContent}>
+										<Text style={styles.moreDetailsLabel}>Contact Number</Text>
+										<Text style={styles.moreDetailsValue}>{contactNumber || "Not available"}</Text>
+									</View>
 								</View>
+
+								{/* WhatsApp */}
+								<TouchableOpacity
+									style={[styles.moreDetailsRow, styles.moreDetailsRowDivider, !whatsappUrl && styles.contactUnavailable]}
+									onPress={handleWhatsAppContact}
+									disabled={!whatsappUrl}
+									activeOpacity={0.7}
+									accessibilityRole="link"
+									accessibilityLabel="Contact shop on WhatsApp"
+									accessibilityState={{ disabled: !whatsappUrl }}
+								>
+									<View style={[styles.moreDetailsIconWrap, styles.whatsappIconWrap]}>
+										<MaterialCommunityIcons name="whatsapp" size={22} color="#25D366" />
+									</View>
+									<View style={styles.moreDetailsContent}>
+										<Text style={styles.moreDetailsLabel}>Contact on WhatsApp</Text>
+										<Text style={[styles.moreDetailsValue, styles.whatsappText]}>{whatsappUrl ? "Start chat" : "Not available"}</Text>
+									</View>
+								</TouchableOpacity>
 
 								{/* Location */}
 								<View style={[styles.moreDetailsRow, { borderTopWidth: 1, borderTopColor: colors.borderLight }]}>
@@ -745,13 +745,9 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 		gap: 12,
 	},
-	contactField: {
-		flex: 1,
-		minWidth: 0,
-		minHeight: 44,
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 10,
+	moreDetailsRowDivider: {
+		borderTopWidth: 1,
+		borderTopColor: colors.borderLight,
 	},
 	contactUnavailable: {
 		opacity: 0.5,

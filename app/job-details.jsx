@@ -810,10 +810,10 @@ const styles = StyleSheet.create({
 	fileCard: {
 		backgroundColor: colors.cardBackground,
 		borderRadius: 12,
-		padding: 12,
+		padding: 16,
 	},
 	fileCardSpacing: {
-		marginBottom: 8,
+		marginBottom: 12,
 	},
 	fileCardHeader: {
 		flexDirection: "row",
@@ -953,25 +953,27 @@ const styles = StyleSheet.create({
 		fontWeight: "800",
 		color: colors.primary,
 	},
-	// Indented to line up with the file name, past the index circle.
+	// Use the full card width so settings have room on mobile.
 	settingsGrid: {
 		flexDirection: "row",
 		flexWrap: "wrap",
-		marginTop: 8,
-		paddingLeft: 30,
-		rowGap: 8,
+		marginTop: 16,
+		rowGap: 16,
 	},
 	settingCell: {
 		width: "50%",
-		paddingRight: 8,
+		paddingRight: 12,
 	},
 	settingLabel: {
-		fontSize: 11,
+		fontSize: 13,
+		lineHeight: 18,
 		color: colors.textSecondary,
 		fontWeight: "500",
+		marginBottom: 4,
 	},
 	settingValue: {
-		fontSize: 13,
+		fontSize: 15,
+		lineHeight: 22,
 		fontWeight: "600",
 		color: colors.textPrimary,
 	},
