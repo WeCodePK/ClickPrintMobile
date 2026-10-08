@@ -2,32 +2,18 @@
 
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { Image } from "expo-image";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import StaleDataNotice from "../../components/StaleDataNotice";
-import config from "../../config/config";
+import ShopImage from "../../components/ShopImage";
 import { colors } from "../../constants/colors";
 import { useServicesQuery, useShopQuery } from "../../hooks/queries";
 import { friendlyMessage } from "../../utils/errors";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
-const API_BASE_URL = config.apiBaseUrl;
-
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-
-const CAPABILITY_LABELS = {
-	bw: "Black & White Printing",
-	color: "Color Printing",
-	a4: "A4 Paper Size",
-	a3: "A3 Paper Size",
-	legal: "Legal Paper Size",
-	duplex: "Double-Sided Printing",
-	staple: "Stapling",
-	binding: "Binding",
-};
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -188,7 +174,7 @@ const ShopDetails = () => {
 						{/* ───── Shop Cover Image ───── */}
 						<View style={styles.coverImageContainer}>
 							{shop.imageFile ? (
-								<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.coverImage} contentFit="cover" transition={200} />
+								<ShopImage imageFile={shop.imageFile} style={styles.coverImage} contentFit="cover" transition={200} />
 							) : (
 								<View style={[styles.coverImage, { backgroundColor: "rgba(255, 139, 123, 0.1)", justifyContent: "center", alignItems: "center" }]}>
 									<Feather name="shopping-bag" size={48} color={colors.printRequest} />

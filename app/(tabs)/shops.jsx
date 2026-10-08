@@ -1,7 +1,6 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -10,13 +9,10 @@ import { showAlert } from "../../utils/alert";
 import { friendlyMessage } from "../../utils/errors";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ShopsMap from "../../components/ShopsMap";
+import ShopImage from "../../components/ShopImage";
 import { colors } from "../../constants/colors";
 import { useShops } from "../../hooks/useShops";
 import { getInitialRegion, toLatLng } from "../../utils/shopLocation";
-import config from "../../config/config"
-
-
-const API_BASE_URL = config.apiBaseUrl;
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -229,7 +225,7 @@ const ShopListItem = ({ shop, onPress, onViewLocation, onNewPrint, creatingDraft
 	return (
 		<TouchableOpacity style={styles.shopCard} onPress={onPress} activeOpacity={0.7}>
 			{shop.imageFile ? (
-				<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.shopImage} contentFit="cover" transition={200} />
+				<ShopImage imageFile={shop.imageFile} style={styles.shopImage} contentFit="cover" transition={200} />
 			) : (
 				<View style={styles.shopIconContainer}>
 					<Feather name="shopping-bag" size={24} color={colors.printRequest} />
@@ -298,7 +294,7 @@ const ShopCallout = ({ shop, onClose, onNewPrint, onDirections, onMoreDetails, c
 
 			<TouchableOpacity style={styles.calloutTop} onPress={onMoreDetails} activeOpacity={0.7}>
 				{shop.imageFile ? (
-					<Image source={{ uri: `${API_BASE_URL}/files/${shop.imageFile}` }} style={styles.calloutImage} contentFit="cover" transition={200} />
+					<ShopImage imageFile={shop.imageFile} style={styles.calloutImage} contentFit="cover" transition={200} />
 				) : (
 					<View style={styles.calloutIcon}>
 						<Feather name="shopping-bag" size={22} color={colors.printRequest} />
