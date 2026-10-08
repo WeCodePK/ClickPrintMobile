@@ -1,7 +1,7 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Image } from "expo-image";
+import ShopImage from "./ShopImage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useRef, useState } from "react";
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -97,7 +97,7 @@ const HeroPhoto = ({ source }) => {
 			) : (
 				<>
 					{status === "loading" && <Skeleton />}
-					<Image
+					<ShopImage
 						source={source}
 						style={StyleSheet.absoluteFill}
 						contentFit="cover"

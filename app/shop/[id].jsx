@@ -16,17 +16,6 @@ import { friendlyMessage } from "../../utils/errors";
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-const CAPABILITY_LABELS = {
-	bw: "Black & White Printing",
-	color: "Color Printing",
-	a4: "A4 Paper Size",
-	a3: "A3 Paper Size",
-	legal: "Legal Paper Size",
-	duplex: "Double-Sided Printing",
-	staple: "Stapling",
-	binding: "Binding",
-};
-
 //----------------------------------- COMPONENTS -----------------------------------//
 
 const ShopDetails = () => {
