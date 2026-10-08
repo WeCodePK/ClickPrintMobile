@@ -189,7 +189,7 @@ const ShopsPage = () => {
 						activeOpacity={0.85}
 						accessibilityLabel="Scan shop QR code"
 					>
-						<Feather name="maximize" size={20} color={colors.cardBackground} />
+						<Feather name="maximize" size={20} color={colors.primary} />
 					</TouchableOpacity>
 				</View>
 			)}
@@ -400,7 +400,9 @@ const styles = StyleSheet.create({
 		width: 44,
 		height: 44,
 		borderRadius: 22,
-		backgroundColor: colors.primary,
+		backgroundColor: colors.cardBackground,
+		borderWidth: 1.5,
+		borderColor: colors.primary,
 		alignItems: "center",
 		justifyContent: "center",
 		shadowColor: colors.shadowMedium,

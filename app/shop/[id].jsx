@@ -1,6 +1,6 @@
 //----------------------------------- IMPORTS -----------------------------------//
 
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, BackHandler, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Linking } from "react-native";
@@ -11,10 +11,26 @@ import { colors } from "../../constants/colors";
 import { useServicesQuery, useShopQuery } from "../../hooks/queries";
 import { useFileSource } from "../../hooks/useFileSource";
 import { friendlyMessage } from "../../utils/errors";
+import { showAlert } from "../../utils/alert";
 
 //----------------------------------- CONSTANTS -----------------------------------//
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+const getWhatsAppUrl = (number) => {
+	let digits = String(number || "").replace(/\D/g, "");
+	if (digits.startsWith("00")) digits = digits.slice(2);
+	// Local Pakistani numbers need the country code for WhatsApp click-to-chat.
+	if (/^0\d{10}$/.test(digits)) digits = `92${digits.slice(1)}`;
+	else if (/^3\d{9}$/.test(digits)) digits = `92${digits}`;
+	return /^[1-9]\d{6,14}$/.test(digits) ? `https://wa.me/${digits}` : null;
+};
+
+const formatWalletBank = (bank) => {
+	const name = String(bank || "").trim();
+	if (!name) return "Bank Not Specified";
+	return name.charAt(0).toUpperCase() + name.slice(1);
+};
 
 //----------------------------------- COMPONENTS -----------------------------------//
 
@@ -126,6 +142,15 @@ const ShopDetails = () => {
 	// Backend sends `coordinates` as [latitude, longitude] and an optional `googleMapsLink`.
 	const coords = Array.isArray(shop?.coordinates) && shop.coordinates.length === 2 ? shop.coordinates : null;
 	const [lat, lng] = coords || [];
+
+	const contactNumber = shop?.contactNumber || shop?.phone || shop?.phoneNumber;
+	const whatsappUrl = getWhatsAppUrl(contactNumber);
+	const handleWhatsAppContact = () => {
+		if (!whatsappUrl) return;
+		Linking.openURL(whatsappUrl).catch(() => {
+			showAlert("Couldn't open WhatsApp", "Please try again.");
+		});
+	};
 
 	const handleOpenLocation = () => {
 		if (shop?.googleMapsLink) {
@@ -327,13 +352,32 @@ const ShopDetails = () => {
 							<View style={styles.card}>
 								{/* Contact */}
 								<View style={styles.moreDetailsRow}>
-									<View style={styles.moreDetailsIconWrap}>
-										<Feather name="phone" size={18} color={colors.textSecondary} />
+									<View style={styles.contactField}>
+										<View style={styles.moreDetailsIconWrap}>
+											<Feather name="phone" size={18} color={colors.textSecondary} />
+										</View>
+										<View style={styles.moreDetailsContent}>
+											<Text style={styles.moreDetailsLabel}>Contact Number</Text>
+											<Text style={styles.moreDetailsValue}>{contactNumber || "Not available"}</Text>
+										</View>
 									</View>
-									<View style={styles.moreDetailsContent}>
-										<Text style={styles.moreDetailsLabel}>Contact Number</Text>
-										<Text style={styles.moreDetailsValue}>{shop.contactNumber || shop.phone || shop.phoneNumber || "Not available"}</Text>
-									</View>
+									<TouchableOpacity
+										style={[styles.contactField, !whatsappUrl && styles.contactUnavailable]}
+										onPress={handleWhatsAppContact}
+										disabled={!whatsappUrl}
+										activeOpacity={0.7}
+										accessibilityRole="link"
+										accessibilityLabel="Contact shop on WhatsApp"
+										accessibilityState={{ disabled: !whatsappUrl }}
+									>
+										<View style={[styles.moreDetailsIconWrap, styles.whatsappIconWrap]}>
+											<MaterialCommunityIcons name="whatsapp" size={22} color="#25D366" />
+										</View>
+										<View style={styles.moreDetailsContent}>
+											<Text style={styles.moreDetailsLabel}>Contact on WhatsApp</Text>
+											<Text style={[styles.moreDetailsValue, styles.whatsappText]}>{whatsappUrl ? "Start chat" : "Not available"}</Text>
+										</View>
+									</TouchableOpacity>
 								</View>
 
 								{/* Location */}
@@ -372,7 +416,7 @@ const ShopDetails = () => {
 										</View>
 										<View style={styles.moreDetailsContent}>
 											<Text style={styles.moreDetailsLabel}>Wallet Details</Text>
-											<Text style={styles.moreDetailsValue}>{shop.wallet.bank || "Bank Not Specified"}</Text>
+											<Text style={styles.moreDetailsValue}>{formatWalletBank(shop.wallet.bank)}</Text>
 											<Text style={styles.moreDetailsSubValue}>{shop.wallet.title || "Title Not Specified"}</Text>
 											<Text style={[styles.moreDetailsValueMono, { marginTop: 4 }]}>{shop.wallet.number || "Number Not Specified"}</Text>
 										</View>
@@ -700,6 +744,23 @@ const styles = StyleSheet.create({
 		paddingVertical: 14,
 		paddingHorizontal: 16,
 		gap: 12,
+	},
+	contactField: {
+		flex: 1,
+		minWidth: 0,
+		minHeight: 44,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+	},
+	contactUnavailable: {
+		opacity: 0.5,
+	},
+	whatsappIconWrap: {
+		backgroundColor: "rgba(37, 211, 102, 0.1)",
+	},
+	whatsappText: {
+		color: "#128C7E",
 	},
 	moreDetailsIconWrap: {
 		width: 36,
