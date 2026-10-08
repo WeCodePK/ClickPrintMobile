@@ -41,7 +41,7 @@ const webDateInputStyle = {
 	fontSize: 14,
 	color: colors.textPrimary,
 	backgroundColor: "transparent",
-	fontFamily: "inherit",
+	fontFamily: "System",
 };
 
 //----------------------------------- COMPONENTS -----------------------------------//
